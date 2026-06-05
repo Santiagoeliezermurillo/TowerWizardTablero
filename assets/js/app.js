@@ -150,7 +150,7 @@ if (!maps.some(m => m.id === initialMapId) && maps.length > 0) {
 const state = {
   activePage:'mapa', activeCharId: loadLS('crq_active_char_id', 1),
   currentTurnIndex:0, round:1, mapTool:'move', activeMapId: initialMapId,
-  currentUser: loadLS('crq_session', null), pendingExternalMusicUrl:null
+  currentUser: loadLS('crq_session', null), pendingExternalMusicUrl:null, quickCombatActorId:null
 };
 
 const attrNames = {str:'FUE',dex:'DES',con:'CON',int:'INT',wis:'SAB',cha:'CAR'};
@@ -161,6 +161,26 @@ const structureImageCache = {};
 function getCombatantById(id) {
   const cid = typeof id === 'string' && !isNaN(id) ? parseInt(id) : id;
   return characters.find(c => c.id === cid) || enemies.find(e => e.id === cid) || npcs.find(n => n.id === cid);
+}
+
+function getEditableCombatantById(id) {
+  return getCombatantById(id);
+}
+
+function saveCombatantSheet(c) {
+  if(!c) return;
+  if(c.type === 'enemy' || enemies.some(enemy => String(enemy.id) === String(c.id))) saveEnemies();
+  else if(c.type === 'npc' || npcs.some(npc => String(npc.id) === String(c.id))) saveNpcs();
+  else saveChars();
+}
+
+function ensureCombatLoadout(c) {
+  if(!c) return c;
+  if(!Array.isArray(c.attacks)) c.attacks = [];
+  if(!Array.isArray(c.inventory)) c.inventory = [];
+  c.gold = Math.max(0, parseInt(c.gold) || 0);
+  if(c.type === 'enemy' && !c.spells) c.spells = {slots:[3,2,0,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]};
+  return c;
 }
 
 function normalizeNpcRecord(npc) {
@@ -222,9 +242,21 @@ function updateCharacterCreateButton() {
 function encodeInline(value) {
   return encodeURIComponent(String(value ?? ''));
 }
+function normalizeTokenColor(color, fallback='#a855f7') {
+  return /^#[0-9a-f]{6}$/i.test(String(color || '').trim()) ? String(color).trim() : fallback;
+}
+function updateCharColorPreview() {
+  const input=document.getElementById('newCharColor');
+  const preview=document.getElementById('newCharColorPreview');
+  if(preview) {
+    const color=normalizeTokenColor(input?.value);
+    preview.style.background=color;
+    preview.style.color=color;
+  }
+}
 function getModalCharacter(modalId) {
   const modal = document.getElementById(modalId);
-  return getCharacterById(modal?.dataset.charId) || getActiveChar();
+  return getEditableCombatantById(modal?.dataset.charId) || getActiveChar();
 }
 function restorePlayerActiveCharacter() {
   if (isDM() || !state.currentUser) return;
@@ -414,8 +446,6 @@ function launchApp() {
     document.querySelectorAll('#mainNavTabs button').forEach(b => b.classList.remove('active'));
     document.querySelector('[data-page="mapa"]').classList.add('active');
   }
-  const boardFocusBtn = document.getElementById('toolBoardFocus');
-  if (boardFocusBtn) boardFocusBtn.onclick = toggleBoardFocus;
   relocateMapControlsBelowDice();
   setupNavTabs();
   initMap();
@@ -478,6 +508,7 @@ function renderAll() {
   renderInventarioPage();
   renderHechizosPage();
   renderAtaquePage();
+  renderQuickCombatPanel();
   renderEnemiesPage();
   renderNpcPage();
   renderManualsPage();
@@ -493,12 +524,156 @@ function renderPageContent(pg) {
   else if(pg==='npc') renderNpcPage();
   else if(pg==='manual') renderManualsPage();
   else if(pg==='partida') renderSavesList();
+  else if(pg==='mapa') renderQuickCombatPanel();
+}
+
+// ===================================================
+// MAP QUICK COMBAT PANEL
+// ===================================================
+function getQuickCombatCharacter() {
+  if(isDM() && mapState?.selectedTokenId) {
+    const token = getMapTokenByTokenId(mapState.selectedTokenId);
+    const selected = token && getCombatantById(token.id);
+    if(selected && selected.type === 'enemy') return ensureCombatLoadout(selected);
+  }
+  if(isDM() && state.quickCombatActorId) {
+    const selected = getCombatantById(state.quickCombatActorId);
+    if(selected && selected.type === 'enemy') return ensureCombatLoadout(selected);
+  }
+  const active = getActiveChar();
+  if(active && (isDM() || canEditCharacter(active))) return ensureCombatLoadout(active);
+  if(!isDM()) return getOwnedCharacters()[0] || null;
+  return ensureCombatLoadout(characters[0] || enemies[0] || null);
+}
+
+function openQuickCombatForActor(actorId) {
+  if(!isDM()) return;
+  const actor = getCombatantById(actorId);
+  if(!actor || actor.type !== 'enemy') return;
+  ensureCombatLoadout(actor);
+  state.quickCombatActorId = actor.id;
+  toggleQuickCombatPanel(true);
+  renderEnemiesPage();
+}
+
+function getQuickCombatAttackActions(c) {
+  if(!c) return [];
+  return Array.isArray(c.attacks)
+    ? c.attacks.map(atk => ({
+        name: atk.name || 'Ataque',
+        icon: atk.icon || '⚔️',
+        type: atk.type || 'Ataque',
+        damage: atk.damage || '',
+        source: 'Ataque'
+      }))
+    : [];
+}
+
+function toggleQuickCombatPanel(force) {
+  const panel = document.getElementById('quickCombatPanel');
+  const toggle = document.getElementById('quickCombatToggle');
+  if(!panel) return;
+  const open = typeof force === 'boolean' ? force : panel.style.display === 'none';
+  panel.style.display = open ? 'flex' : 'none';
+  toggle?.classList.toggle('active', open);
+  if(open) renderQuickCombatPanel();
+}
+
+function renderQuickCombatPanel() {
+  const panel = document.getElementById('quickCombatPanel');
+  if(!panel) return;
+  const c = getQuickCombatCharacter();
+  ensureCombatLoadout(c);
+  const canEdit = canEditCharacter(c);
+  if(!c) {
+    panel.innerHTML = `
+      <div class="quick-combat-header">
+        <div><div class="quick-combat-title">Combate rapido</div><div class="quick-combat-subtitle">Crea un personaje para usar ataques y hechizos desde el mapa.</div></div>
+        <button class="quick-combat-close" onclick="toggleQuickCombatPanel(false)">×</button>
+      </div>
+      <div class="quick-combat-body"><div class="quick-combat-empty">No hay personaje activo.</div></div>`;
+    return;
+  }
+
+  const attacks = getQuickCombatAttackActions(c);
+  const spells = Array.isArray(c.spells?.prepared) ? c.spells.prepared : [];
+  const actorKind = c.type === 'enemy' ? 'Enemigo del DM' : 'Personaje';
+  panel.innerHTML = `
+    <div class="quick-combat-header">
+      <div>
+        <div class="quick-combat-title">Combate rapido</div>
+        <div class="quick-combat-subtitle">${escapeHTML(c.name)} · ${actorKind} · ataques y hechizos sin salir del mapa</div>
+      </div>
+      <button class="quick-combat-close" onclick="toggleQuickCombatPanel(false)">×</button>
+    </div>
+    <div class="quick-combat-body">
+      <div class="quick-combat-actions">
+        ${canEdit ? '<button id="quickCombatAddAttack" type="button">+ Ataque</button>' : ''}
+        ${canEdit ? '<button id="quickCombatAddSpell" type="button">+ Hechizo</button>' : ''}
+        ${c.type === 'enemy' ? '<button id="quickCombatOpenInventory" type="button">Ver solapa enemiga</button>' : '<button id="quickCombatOpenInventory" type="button">Abrir inventario</button>'}
+      </div>
+      <section>
+        <div class="quick-combat-section-title">Ataques agregados</div>
+        <div class="quick-combat-list" id="quickCombatAttacks">
+          ${attacks.length ? attacks.map((atk, idx) => `
+            <div class="quick-combat-row">
+              <div class="quick-combat-icon">${escapeHTML(atk.icon)}</div>
+              <div>
+                <div class="quick-combat-name">${escapeHTML(atk.name)}</div>
+                <div class="quick-combat-meta">${escapeHTML(atk.type)}${atk.damage ? ` · Daño ${escapeHTML(atk.damage)}` : ''}</div>
+              </div>
+              <button class="quick-combat-use" type="button" data-quick-attack="${idx}">Atacar</button>
+            </div>`).join('') : '<div class="quick-combat-empty">Sin ataques agregados. Usa + Ataque para crear acciones de combate.</div>'}
+        </div>
+      </section>
+      <section>
+        <div class="quick-combat-section-title">Hechizos preparados</div>
+        <div class="quick-combat-list" id="quickCombatSpells">
+          ${spells.length ? spells.map((sp, idx) => `
+            <div class="quick-combat-row">
+              <div class="quick-combat-icon">${escapeHTML(sp.icon || '✨')}</div>
+              <div>
+                <div class="quick-combat-name">${escapeHTML(sp.name || 'Conjuro')}</div>
+                <div class="quick-combat-meta">Nivel ${Number.isFinite(Number(sp.level)) ? Number(sp.level) : 0}${sp.damage ? ` · Daño ${escapeHTML(sp.damage)}` : ''}</div>
+              </div>
+              <button class="quick-combat-use spell" type="button" data-quick-spell="${idx}">Lanzar</button>
+            </div>`).join('') : '<div class="quick-combat-empty">Sin hechizos preparados para este personaje.</div>'}
+        </div>
+      </section>
+    </div>`;
+
+  panel.querySelector('#quickCombatAddAttack')?.addEventListener('click', () => openAddAttackModal(c.id));
+  panel.querySelector('#quickCombatAddSpell')?.addEventListener('click', () => openAddSpellModal(c.id));
+  panel.querySelector('#quickCombatOpenInventory')?.addEventListener('click', () => {
+    if(c.type === 'enemy') {
+      openEnemyLoadout(c.id, 'inventory');
+      document.querySelectorAll('#mainNavTabs button').forEach(b => b.classList.toggle('active', b.dataset.page === 'recursos'));
+      switchPage('recursos');
+      document.getElementById('page-enemigos')?.scrollIntoView({behavior:'smooth',block:'start'});
+      return;
+    }
+    document.querySelectorAll('#mainNavTabs button').forEach(b => b.classList.toggle('active', b.dataset.page === 'inventario'));
+    switchPage('inventario');
+  });
+  panel.querySelectorAll('[data-quick-attack]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = attacks[parseInt(btn.dataset.quickAttack, 10)];
+      if(action) executeAttack(c.name, action.name, action.icon, action.damage || '');
+    });
+  });
+  panel.querySelectorAll('[data-quick-spell]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const spell = spells[parseInt(btn.dataset.quickSpell, 10)];
+      if(spell) castSpell(c.name, spell.name || 'Conjuro', spell.icon || '✨', spell.damage || '');
+    });
+  });
 }
 
 // ===================================================
 // ENEMIES PAGE
 // ===================================================
 let enemyEditingId=null;
+let enemyLoadoutState={id:null,tab:'attacks'};
 function renderEnemiesPage() {
   const grid=document.getElementById('enemyLibraryGrid');
   if(!grid) return;
@@ -511,8 +686,11 @@ function renderEnemiesPage() {
     return;
   }
   grid.innerHTML=enemies.map(enemy=>{
+    ensureCombatLoadout(enemy);
     const tokenCount=mapState.tokens.filter(token=>String(token.id)===String(enemy.id)).length;
     const onMap=tokenCount>0;
+    const safeId=encodeInline(enemy.id);
+    const isLoadoutOpen=String(enemyLoadoutState.id)===String(enemy.id);
     const attr={str:10,dex:10,con:10,int:10,wis:10,cha:10,...(enemy.attributes||{})};
     const statBoxes=Object.entries({FUE:attr.str,DES:attr.dex,CON:attr.con,INT:attr.int,SAB:attr.wis,CAR:attr.cha})
       .map(([label,value])=>`<div class="enemy-card-stat">${label}<strong>${value}</strong></div>`).join('');
@@ -531,9 +709,94 @@ function renderEnemiesPage() {
           <button class="enemy-edit-btn" onclick="editEnemy('${enemy.id}')" title="Editar ficha">✎</button>
           <button class="enemy-delete-btn" onclick="deleteEnemy('${enemy.id}')" title="Eliminar enemigo">✕</button>
         </div>
+        <div class="enemy-loadout-actions">
+          <button onclick="openQuickCombatForActor(decodeURIComponent('${safeId}'))">Combate rápido</button>
+          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','attacks')">Ataques</button>
+          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','spells')">Hechizos</button>
+          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','inventory')">Inventario</button>
+        </div>
+        ${isLoadoutOpen ? renderEnemyLoadoutPanel(enemy) : ''}
       </div>
     </article>`;
   }).join('');
+}
+
+function openEnemyLoadout(enemyIdEncoded, tab='attacks') {
+  if(!isDM()) return;
+  const enemyId=decodeURIComponent(String(enemyIdEncoded));
+  const enemy=enemies.find(item=>String(item.id)===String(enemyId));
+  if(!enemy) return;
+  ensureCombatLoadout(enemy);
+  enemyLoadoutState={id:enemy.id,tab:['attacks','spells','inventory'].includes(tab)?tab:'attacks'};
+  state.quickCombatActorId=enemy.id;
+  renderEnemiesPage();
+}
+
+function renderEnemyLoadoutPanel(enemy) {
+  ensureCombatLoadout(enemy);
+  const safeId=encodeInline(enemy.id);
+  const active=enemyLoadoutState.tab || 'attacks';
+  const tabs=`<div class="enemy-loadout-tabs">
+    <button class="${active==='attacks'?'active':''}" onclick="openEnemyLoadout('${safeId}','attacks')">Ataques</button>
+    <button class="${active==='spells'?'active':''}" onclick="openEnemyLoadout('${safeId}','spells')">Hechizos</button>
+    <button class="${active==='inventory'?'active':''}" onclick="openEnemyLoadout('${safeId}','inventory')">Inventario</button>
+  </div>`;
+  let body='';
+  if(active==='spells') {
+    const spells=Array.isArray(enemy.spells?.prepared) ? enemy.spells.prepared : [];
+    body=`<div class="enemy-loadout-toolbar"><span>Grimorio de ${escapeHTML(enemy.name)}</span><button onclick="openAddSpellModal(decodeURIComponent('${safeId}'))">+ Hechizo</button></div>
+      <div class="enemy-loadout-list">
+        ${spells.length ? spells.map((sp,idx)=>`<div class="enemy-loadout-row">
+          <span class="enemy-loadout-icon">${escapeHTML(sp.icon||'✨')}</span>
+          <div><strong>${escapeHTML(sp.name||'Conjuro')}</strong><small>Nivel ${Number.isFinite(Number(sp.level)) ? Number(sp.level) : 0}${sp.damage ? ` · Daño ${escapeHTML(sp.damage)}` : ''}</small></div>
+          <button onclick="castEnemyLoadoutSpell('${safeId}',${idx})">Lanzar</button>
+          <button class="danger" onclick="removeSpell('${safeId}',${idx})">×</button>
+        </div>`).join('') : '<div class="enemy-loadout-empty">Este enemigo todavía no tiene hechizos.</div>'}
+      </div>`;
+  } else if(active==='inventory') {
+    const items=Array.isArray(enemy.inventory) ? enemy.inventory : [];
+    body=`<div class="enemy-loadout-toolbar"><span>Inventario de ${escapeHTML(enemy.name)}</span><button onclick="openAddItemModal(decodeURIComponent('${safeId}'))">+ Objeto</button></div>
+      <div class="enemy-loadout-list">
+        ${items.length ? items.map((item,idx)=>`<div class="enemy-loadout-row">
+          <span class="enemy-loadout-icon">${escapeHTML(item.icon||'🎒')}</span>
+          <div><strong>${escapeHTML(item.name||'Objeto')}</strong><small>Cantidad ${parseInt(item.qty)||1} · ${getInventoryItemBadge(item)}</small></div>
+          <button class="danger" onclick="removeItem('${safeId}',${idx})">×</button>
+        </div>`).join('') : '<div class="enemy-loadout-empty">Este enemigo todavía no tiene objetos.</div>'}
+      </div>`;
+  } else {
+    const attacks=Array.isArray(enemy.attacks) ? enemy.attacks : [];
+    body=`<div class="enemy-loadout-toolbar"><span>Ataques de ${escapeHTML(enemy.name)}</span><button onclick="openAddAttackModal(decodeURIComponent('${safeId}'))">+ Ataque</button></div>
+      <div class="enemy-loadout-list">
+        ${attacks.length ? attacks.map((atk,idx)=>`<div class="enemy-loadout-row">
+          <span class="enemy-loadout-icon">${escapeHTML(atk.icon||'⚔️')}</span>
+          <div><strong>${escapeHTML(atk.name||'Ataque')}</strong><small>${escapeHTML(atk.type||'Ataque')}${atk.damage ? ` · Daño ${escapeHTML(atk.damage)}` : ''}</small></div>
+          <button onclick="executeEnemyLoadoutAttack('${safeId}',${idx})">Atacar</button>
+          <button class="danger" onclick="removeAttack('${safeId}',${idx})">×</button>
+        </div>`).join('') : '<div class="enemy-loadout-empty">Este enemigo todavía no tiene ataques.</div>'}
+      </div>`;
+  }
+  return `<div class="enemy-loadout-panel">${tabs}${body}</div>`;
+}
+
+function getEnemyByEncodedId(enemyIdEncoded) {
+  const enemyId=decodeURIComponent(String(enemyIdEncoded));
+  return enemies.find(item=>String(item.id)===String(enemyId));
+}
+
+function executeEnemyLoadoutAttack(enemyIdEncoded, idx) {
+  if(!isDM()) return;
+  const enemy=getEnemyByEncodedId(enemyIdEncoded);
+  const attack=enemy?.attacks?.[idx];
+  if(!enemy || !attack) return;
+  executeAttack(enemy.name, attack.name || 'Ataque', attack.icon || '⚔️', attack.damage || '');
+}
+
+function castEnemyLoadoutSpell(enemyIdEncoded, idx) {
+  if(!isDM()) return;
+  const enemy=getEnemyByEncodedId(enemyIdEncoded);
+  const spell=enemy?.spells?.prepared?.[idx];
+  if(!enemy || !spell) return;
+  castSpell(enemy.name, spell.name || 'Conjuro', spell.icon || '✨', spell.damage || '');
 }
 function createEnemyRecord(name,hp,initiative,portrait=null,details={}) {
   const enemy={
@@ -541,7 +804,8 @@ function createEnemyRecord(name,hp,initiative,portrait=null,details={}) {
     name:name||'Enemigo', hp, maxHp:hp, type:'enemy', initiative,
     color:randColor(), initials:initials(name||'Enemigo'), online:true, portrait,
     ac:details.ac??12, xp:details.xp??0,
-    attributes:details.attributes||{str:10,dex:10,con:10,int:10,wis:10,cha:10}
+    attributes:details.attributes||{str:10,dex:10,con:10,int:10,wis:10,cha:10},
+    inventory:[], gold:0, attacks:[], spells:{slots:[3,2,0,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]}
   };
   enemies.push(enemy);
   combatants=getInitiativeCombatants();
@@ -896,6 +1160,7 @@ function selectChar(id) {
   renderInventarioPage();
   renderHechizosPage();
   renderAtaquePage();
+  renderQuickCombatPanel();
 }
 
 function restoreCharDetail() {
@@ -1147,6 +1412,7 @@ function deleteCharacter(charIdEncoded) {
   renderInventarioPage();
   renderHechizosPage();
   renderAtaquePage();
+  renderQuickCombatPanel();
   drawMap();
   broadcastMapTokens();
   addChatMessage('sys','',`Ficha borrada: <b>${escapeHTML(c.name)}</b>.`);
@@ -1297,24 +1563,27 @@ function changeCharacterGold(direction) {
   c.gold = Math.max(0, (parseInt(c.gold) || 0) + (direction > 0 ? amount : -amount));
   saveChars();
   renderInventarioPage();
+  renderQuickCombatPanel();
 }
 
 function removeItem(charId, idx) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.inventory) return;
   c.inventory.splice(idx,1);
-  saveChars();
+  saveCombatantSheet(c);
   renderInventarioPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 function toggleItemEquipped(charId, idx) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.inventory?.[idx]) return;
   if(c.inventory[idx].equipped) storeInventoryItem(charId, idx);
   else equipInventoryItem(charId, idx);
 }
 
 function equipInventoryItem(charId, idx) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.inventory?.[idx]) return;
   const item = c.inventory[idx];
   const slot = getInventoryItemSlot(item);
@@ -1322,19 +1591,23 @@ function equipInventoryItem(charId, idx) {
   item.slot = slot;
   item.category = slot;
   item.equipped = true;
-  saveChars();
+  saveCombatantSheet(c);
   renderInventarioPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 function storeInventoryItem(charId, idx) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.inventory?.[idx]) return;
   const item = c.inventory[idx];
   item.slot = getInventoryItemSlot(item);
   item.category = 'bag';
   item.equipped = false;
-  saveChars();
+  saveCombatantSheet(c);
   renderInventarioPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 // ===================================================
@@ -1400,10 +1673,14 @@ function renderHechizosPage() {
         <div class="spell-entry">
           <div class="spell-entry-left">
             <span class="spell-icon">${sp.icon||'✨'}</span>
-            <div><div class="spell-entry-name">${sp.name}</div><span class="spell-level-badge">Nivel ${sp.level}</span></div>
+            <div>
+              <div class="spell-entry-name">${sp.name}</div>
+              <span class="spell-level-badge">Nivel ${sp.level}</span>
+              ${sp.damage ? `<span class="attack-damage-badge">Daño ${escapeHTML(sp.damage)}</span>` : ''}
+            </div>
           </div>
           <div class="spell-entry-actions">
-            <button class="cast-btn" onclick="castSpell('${c.name}','${sp.name}','${sp.icon||'✨'}')">⚡ Lanzar</button>
+            <button class="cast-btn" onclick="castSpell('${c.name}','${sp.name}','${sp.icon||'✨'}','${sp.damage||''}')">⚡ Lanzar</button>
             ${canEdit ? `<button class="btn-remove-spell" onclick="removeSpell(${c.id},${globalIdx})" title="Eliminar">✕</button>` : ''}
           </div>
         </div>`);
@@ -1412,28 +1689,51 @@ function renderHechizosPage() {
 }
 
 function toggleSlot(charId,levelIndex,clickedIndex,availableCount) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.spells) return;
   if(clickedIndex<availableCount) c.spells.usedSlots[levelIndex]++;
   else c.spells.usedSlots[levelIndex]--;
-  saveChars();
+  saveCombatantSheet(c);
   renderHechizosPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
-function castSpell(charName, spellName, spellIcon) {
+function formatDamageRoll(damage) {
+  if(!damage) return '';
+  const match = String(damage).trim().match(/(\d+)d(\d+)([+-]\d+)?/i);
+  if(match) {
+    const num = parseInt(match[1]);
+    const sides = parseInt(match[2]);
+    const bonus = parseInt(match[3] || 0);
+    let total = bonus;
+    const rolls = [];
+    for(let i = 0; i < num; i++) {
+      const r = Math.floor(Math.random() * sides) + 1;
+      rolls.push(r);
+      total += r;
+    }
+    return ` → <b style="color:#fbbf24;">${total} daño</b> <span style="color:rgba(255,255,255,0.4);font-size:0.78rem;">[${rolls.join('+')}${bonus ? (bonus>=0?'+':'')+bonus : ''}]</span>`;
+  }
+  return ` → <b style="color:#fbbf24;">${escapeHTML(damage)}</b>`;
+}
+function castSpell(charName, spellName, spellIcon, damage='') {
   const icon = spellIcon || '✨';
+  const dmgRoll = formatDamageRoll(damage);
   const safeData = { charName:escapeHTML(charName), spellName:escapeHTML(spellName), spellIcon:escapeHTML(icon) };
-  addChatMessage('player', safeData.charName, `Conjura: <b>${safeData.spellName}</b> 🎇`);
+  addChatMessage('player', safeData.charName, `Conjura: <b>${safeData.spellName}</b>${dmgRoll} 🎇`);
   SoundEngine.spell(icon);
   if (typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
-    multiplayer.broadcast({ type: 'spell_cast', charName, spellName, spellIcon:icon });
+    multiplayer.broadcast({ type: 'spell_cast', charName, spellName, spellIcon:icon, spellDamage:damage, dmgRoll });
   }
 }
 function removeSpell(charId,idx) {
-  const c = characters.find(ch=>ch.id===charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if(!canEditCharacter(c)||!c.spells) return;
   c.spells.prepared.splice(idx,1);
-  saveChars();
+  saveCombatantSheet(c);
   renderHechizosPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 // ===================================================
@@ -1627,26 +1927,7 @@ function renderAtaquePage() {
 }
 
 function executeAttack(charName, weaponName, icon, damage) {
-  let dmgRoll = '';
-  if (damage) {
-    // Parse and roll e.g. "1d8+3"
-    const match = damage.match(/(\d+)d(\d+)([+-]\d+)?/i);
-    if (match) {
-      const num = parseInt(match[1]);
-      const sides = parseInt(match[2]);
-      const bonus = parseInt(match[3] || 0);
-      let total = bonus;
-      const rolls = [];
-      for (let i = 0; i < num; i++) {
-        const r = Math.floor(Math.random() * sides) + 1;
-        rolls.push(r);
-        total += r;
-      }
-      dmgRoll = ` → <b style="color:#fbbf24;">${total} daño</b> <span style="color:rgba(255,255,255,0.4);font-size:0.78rem;">[${rolls.join('+')}${bonus ? (bonus>=0?'+':'')+bonus : ''}]</span>`;
-    } else {
-      dmgRoll = ` → <b style="color:#fbbf24;">${escapeHTML(damage)}</b>`;
-    }
-  }
+  const dmgRoll = formatDamageRoll(damage);
   const safeData = { charName:escapeHTML(charName), weaponName:escapeHTML(weaponName), icon:escapeHTML(icon), dmgRoll };
   const chatText = `Ataca con <b>${safeData.icon} ${safeData.weaponName}</b>${safeData.dmgRoll} ⚔️`;
   addChatMessage('player', safeData.charName, chatText);
@@ -1657,7 +1938,7 @@ function executeAttack(charName, weaponName, icon, damage) {
 }
 
 function openAddAttackModal(charId = state.activeCharId) {
-  const c = getCharacterById(charId) || getActiveChar();
+  const c = getEditableCombatantById(charId) || getActiveChar();
   if(!canEditCharacter(c)) return;
   document.getElementById('newAttackName').value = '';
   document.getElementById('newAttackIcon').value = '⚔️';
@@ -1672,6 +1953,7 @@ function openAddAttackModal(charId = state.activeCharId) {
 function saveAttackToDM() {
   const c = getModalCharacter('addAttackModalOverlay');
   if (!canEditCharacter(c)) return;
+  ensureCombatLoadout(c);
   const name   = document.getElementById('newAttackName').value.trim() || 'Arma';
   const icon   = document.getElementById('newAttackIcon').value.trim() || '⚔️';
   const type   = document.getElementById('newAttackType').value || 'Espada';
@@ -1679,17 +1961,21 @@ function saveAttackToDM() {
   if (!c.attacks) c.attacks = [];
   c.attacks.push({ name, icon, type, damage });
   playAttackSound(icon, type);
-  saveChars();
+  saveCombatantSheet(c);
   closeModals();
   renderAtaquePage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 function removeAttack(charId, idx) {
-  const c = characters.find(ch => ch.id === charId);
+  const c = getEditableCombatantById(decodeURIComponent(String(charId)));
   if (!canEditCharacter(c) || !c.attacks) return;
   c.attacks.splice(idx, 1);
-  saveChars();
+  saveCombatantSheet(c);
   renderAtaquePage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 // ===================================================
@@ -3021,6 +3307,12 @@ function refreshChannelVolumeUI() {
     const muteButton=document.getElementById(`${channel}MuteButton`);
     if(label) label.textContent=`${Math.round(volume*100)}%`;
     if(muteButton) muteButton.textContent=volume>0?'🔊':'🔇';
+    if(channel==='weather') {
+      const headerLabel=document.getElementById('weatherHeaderVolumeLabel');
+      const headerMuteButton=document.getElementById('weatherHeaderMuteButton');
+      if(headerLabel) headerLabel.textContent=`Clima ${Math.round(volume*100)}%`;
+      if(headerMuteButton) headerMuteButton.textContent=volume>0?'🔊':'🔇';
+    }
   });
 }
 function applyChannelVolume(channel,value) {
@@ -3215,7 +3507,7 @@ function suggestSpellSticker() {
 }
 
 function openAddItemModal(charId = state.activeCharId) {
-  const c = getCharacterById(charId) || getActiveChar();
+  const c = getEditableCombatantById(charId) || getActiveChar();
   if(!canEditCharacter(c)) return;
   document.getElementById('newItemName').value='';
   document.getElementById('newItemIcon').value='🎒';
@@ -3229,6 +3521,7 @@ function openAddItemModal(charId = state.activeCharId) {
 function saveItemToDM() {
   const c = getModalCharacter('addItemModalOverlay');
   if(!canEditCharacter(c)) return;
+  ensureCombatLoadout(c);
   const name     = document.getElementById('newItemName').value.trim() || 'Objeto';
   const icon     = document.getElementById('newItemIcon').value.trim() || '🎒';
   const qty      = parseInt(document.getElementById('newItemQty').value)||1;
@@ -3239,17 +3532,20 @@ function saveItemToDM() {
   if(!Array.isArray(c.inventory)) c.inventory = [];
   c.inventory.push({name,icon,qty,equipped:false,category:'bag',slot});
   SoundEngine.item(icon);
-  saveChars();
+  saveCombatantSheet(c);
   closeModals();
   renderInventarioPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 function openAddSpellModal(charId = state.activeCharId) {
-  const c = getCharacterById(charId) || getActiveChar();
+  const c = getEditableCombatantById(charId) || getActiveChar();
   if(!canEditCharacter(c)) return;
   document.getElementById('newSpellName').value='';
   document.getElementById('newSpellLevel').value='1';
   document.getElementById('newSpellIcon').value='✨';
+  document.getElementById('newSpellDamage').value='';
   const modal = document.getElementById('addSpellModalOverlay');
   modal.dataset.charId = c?.id || '';
   modal.classList.add('active');
@@ -3258,17 +3554,21 @@ function openAddSpellModal(charId = state.activeCharId) {
 function saveSpellToDM() {
   const c = getModalCharacter('addSpellModalOverlay');
   if(!canEditCharacter(c)) return;
+  ensureCombatLoadout(c);
   if(!c.spells) {
     c.spells = {slots:[4,2,2,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]};
   }
   const name  = document.getElementById('newSpellName').value.trim() || 'Conjuro';
   const level = parseInt(document.getElementById('newSpellLevel').value)||1;
   const icon  = document.getElementById('newSpellIcon').value.trim() || '✨';
-  c.spells.prepared.push({name,level,icon});
+  const damage = document.getElementById('newSpellDamage').value.trim();
+  c.spells.prepared.push({name,level,icon,damage});
   SoundEngine.spell(icon);
-  saveChars();
+  saveCombatantSheet(c);
   closeModals();
   renderHechizosPage();
+  renderEnemiesPage();
+  renderQuickCombatPanel();
 }
 
 // ===================================================
@@ -3361,6 +3661,12 @@ function openCharModal(charId = null) {
   document.getElementById('newCharCha').value = editingChar?.attributes?.cha ?? 10;
   document.getElementById('newCharInit').value = editingChar?.initiative ?? 10;
   document.getElementById('newCharHp').value = editingChar?.maxHp ?? 15;
+  const colorInput = document.getElementById('newCharColor');
+  if(colorInput) {
+    colorInput.value = normalizeTokenColor(editingChar?.color, randColor());
+    colorInput.oninput = updateCharColorPreview;
+    updateCharColorPreview();
+  }
   const vision = editingChar ? normalizeCharacterVision(editingChar) : {...characterVisionDefaults};
   const visionRadius = document.getElementById('newCharVisionRadius');
   const visionAngle = document.getElementById('newCharVisionAngle');
@@ -3401,6 +3707,7 @@ function saveCharacter() {
   const level = Math.max(1, parseInt(document.getElementById('newCharLevel').value)||1);
   const hp   = parseInt(document.getElementById('newCharHp').value)||10;
   const init = parseInt(document.getElementById('newCharInit').value)||10;
+  const tokenColor = normalizeTokenColor(document.getElementById('newCharColor')?.value, editingChar?.color || randColor());
   const attr = {
     str:parseInt(document.getElementById('newCharStr').value)||10,
     dex:parseInt(document.getElementById('newCharDex').value)||10,
@@ -3415,7 +3722,7 @@ function saveCharacter() {
     Object.assign(editingChar, {
       name, race, class:cls, level, type, initiative:init,
       maxHp:hp, hp:Math.max(0, Math.min(hp, (parseInt(editingChar.hp) || hp) + hpDelta)),
-      initials:initials(name), attributes:attr, skills:getCharacterDraftSkills(), vision
+      initials:initials(name), color:tokenColor, attributes:attr, skills:getCharacterDraftSkills(), vision
     });
     if(type==='player') saveChars();
     else saveEnemies();
@@ -3429,6 +3736,7 @@ function saveCharacter() {
     renderInventarioPage();
     renderHechizosPage();
     renderAtaquePage();
+    renderQuickCombatPanel();
     renderEnemiesPage();
     if(typeof drawMap === 'function') drawMap();
     addChatMessage('sys','',`Ficha actualizada: <b>${escapeHTML(name)}</b>.`);
@@ -3438,7 +3746,7 @@ function saveCharacter() {
   const userId = (!isDM() && state.currentUser) ? state.currentUser.id : null;
   const obj = {
     id:Date.now(), name, race, class:cls, level, hp, maxHp:hp, type, initiative:init,
-    color:randColor(), initials:initials(name), online:true, portrait:null,
+    color:tokenColor, initials:initials(name), online:true, portrait:null,
     attributes:attr,
     skills:getCharacterDraftSkills(),
     inventory:[], gold:0, spells:null, userId, vision
@@ -3458,6 +3766,7 @@ function saveCharacter() {
   renderInventarioPage();
   renderHechizosPage();
   renderAtaquePage();
+  renderQuickCombatPanel();
   renderEnemiesPage();
   addChatMessage('sys','',`<b>${name}</b> se ha unido a la campaña.`);
 }
@@ -3472,6 +3781,7 @@ function levelUpCharacter(charId = state.activeCharId) {
   renderInventarioPage();
   renderHechizosPage();
   renderAtaquePage();
+  renderQuickCombatPanel();
   addChatMessage('sys','',`⬆ <b>${escapeHTML(c.name)}</b> subió a nivel ${c.level}. Ajusta su ficha si recibió mejoras.`);
   openCharModal(c.id);
 }
@@ -4071,7 +4381,7 @@ function animate3DDice(result,faces,callback,individualRolls=[]) {
 const mapState = {
   canvas:null,ctx:null,zoom:1,offsetX:0,offsetY:0,
   isDragging:false,dragStartX:0,dragStartY:0,
-  tokens:[],structures:[],walls:[],fogStrokes:[],exploredFogPolygons:[],wallDraft:null,pendingStructure:null,structureMode:'add',draggingToken:null,selectedTokenId:null,pings:[],currentImage:null,
+  tokens:[],structures:[],walls:[],fogStrokes:[],exploredFogPolygons:[],wallDraft:null,pendingStructure:null,structureMode:'add',draggingToken:null,rotatingToken:null,selectedTokenId:null,pings:[],currentImage:null,
   gridVisible:true, fogOfWar:false, fogSeeThrough:false, fogExploredAreas:false, measurement:null,
   weather: 'none', music: 'none', externalMusicUrl:null, weatherParticles: [],
   lightningFlash: 0,
@@ -4087,6 +4397,7 @@ function initMap() {
     mapState.canvas.addEventListener('mousemove',onMapMove);
     mapState.canvas.addEventListener('mouseup',onMapUp);
     mapState.canvas.addEventListener('mouseleave',onMapUp);
+    mapState.canvas.addEventListener('contextmenu',e=>e.preventDefault());
     mapState.canvas.addEventListener('dblclick',onMapDblClick);
     mapState.canvas.addEventListener('wheel', onMapWheel, { passive: false });
     mapState.initialized = true;
@@ -4422,6 +4733,36 @@ function getMapPos(e) {
 function getMapTokenByTokenId(tokenId) {
   return mapState.tokens.find(token => token.tokenId === tokenId);
 }
+function getMapTokenAt(pos) {
+  for(let i=mapState.tokens.length-1;i>=0;i--) {
+    const token=mapState.tokens[i];
+    if(token.hidden && !isDM()) continue;
+    normalizeTokenGridSize(token);
+    if((pos.x-token.x)**2+(pos.y-token.y)**2<=token.radius**2) return token;
+  }
+  return null;
+}
+function canControlMapToken(token) {
+  const combatant=token && getCombatantById(token.id);
+  if(!token || !combatant) return false;
+  if(token.hidden && !isDM()) return false;
+  return isDM() || canEditCharacter(combatant);
+}
+function updateTokenFacingToward(token,pos) {
+  if(!token || !pos) return false;
+  const dx=pos.x-token.x;
+  const dy=pos.y-token.y;
+  if(Math.hypot(dx,dy)<=0.5) return false;
+  token.facing=Math.atan2(dy,dx);
+  return true;
+}
+function broadcastTokenTransform(token, throttle=true) {
+  if(!token || typeof multiplayer === 'undefined' || !multiplayer.isActive()) return;
+  const now=Date.now();
+  if(throttle && now - mapState.lastTokenBroadcast <= 40) return;
+  mapState.lastTokenBroadcast=now;
+  multiplayer.broadcast({type:'token_move',tokenId:token.tokenId,x:token.x,y:token.y,facing:token.facing});
+}
 function canResizeToken(token, combatant = null) {
   const c = combatant || (token && getCombatantById(token.id));
   return !!token && !!c && (isDM() || canEditCharacter(c));
@@ -4466,7 +4807,10 @@ function closeTokenActionPanel() {
 function selectMapToken(token) {
   if(!canResizeToken(token)) return;
   mapState.selectedTokenId=token.tokenId;
+  const combatant=getCombatantById(token.id);
+  if(isDM() && combatant?.type === 'enemy') state.quickCombatActorId=combatant.id;
   renderTokenActionPanel();
+  renderQuickCombatPanel();
   drawMap();
 }
 function syncSelectedTokenChange(message='') {
@@ -4534,6 +4878,21 @@ function addFogStroke(pos,mode) {
 }
 function onMapDown(e) {
   const pos=getMapPos(e);
+  if(e.button === 2) {
+    e.preventDefault();
+    const token=getMapTokenAt(pos);
+    if(!canControlMapToken(token)) return;
+    mapState.rotatingToken=token;
+    mapState.selectedTokenId=token.tokenId;
+    updateTokenFacingToward(token,pos);
+    mapState.tokens.push(mapState.tokens.splice(mapState.tokens.indexOf(token),1)[0]);
+    renderTokenActionPanel();
+    renderQuickCombatPanel();
+    drawMap();
+    broadcastTokenTransform(token);
+    return;
+  }
+  if(e.button !== 0) return;
   if((state.mapTool==='fog-reveal' || state.mapTool==='fog-hide') && isDM()) {
     if(!mapState.fogOfWar) toggleFogOfWar(true);
     mapState.isFogPainting=true;
@@ -4579,11 +4938,7 @@ function onMapDown(e) {
     if(t.hidden && !isDM()) continue;
     normalizeTokenGridSize(t);
     if((pos.x-t.x)**2+(pos.y-t.y)**2<=t.radius**2) {
-      // Los jugadores solo pueden mover su propio token
-      if (!isDM()) {
-        const combatant = getCombatantById(t.id);
-        if (!combatant || !state.currentUser || combatant.userId !== state.currentUser.id) break;
-      }
+      if (!canControlMapToken(t)) break;
       if(isDM() && mapState.fogOfWar && mapState.selectedTokenId!==t.tokenId) {
         mapState.selectedTokenId=t.tokenId;
         renderTokenActionPanel();
@@ -4595,6 +4950,15 @@ function onMapDown(e) {
   mapState.isDragging=true; mapState.dragStartX=e.clientX-mapState.offsetX; mapState.dragStartY=e.clientY-mapState.offsetY;
 }
 function onMapMove(e) {
+  if(mapState.rotatingToken) {
+    e.preventDefault();
+    const p=getMapPos(e);
+    if(updateTokenFacingToward(mapState.rotatingToken,p)) {
+      drawMap();
+      broadcastTokenTransform(mapState.rotatingToken);
+    }
+    return;
+  }
   if(mapState.isFogPainting && (state.mapTool==='fog-reveal' || state.mapTool==='fog-hide') && isDM()) {
     const p=getMapPos(e);
     addFogStroke(p,state.mapTool==='fog-reveal'?'reveal':'hide');
@@ -4613,26 +4977,30 @@ function onMapMove(e) {
   }
   else if(mapState.draggingToken) {
     const p=getMapPos(e);
-    const dx=p.x-mapState.draggingToken.x;
-    const dy=p.y-mapState.draggingToken.y;
-    if(Math.hypot(dx,dy)>1) mapState.draggingToken.facing=Math.atan2(dy,dx);
     mapState.draggingToken.x=p.x;
     mapState.draggingToken.y=p.y;
     mapState.draggingToken.tx=p.x;
     mapState.draggingToken.ty=p.y;
     drawMap();
     // Transmisión en tiempo real (throttled a 40ms)
-    const now=Date.now();
-    if(now - mapState.lastTokenBroadcast > 40 && typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
-      mapState.lastTokenBroadcast=now;
-      multiplayer.broadcast({ type:'token_move', tokenId:mapState.draggingToken.tokenId, x:p.x, y:p.y, facing:mapState.draggingToken.facing });
-    }
+    broadcastTokenTransform(mapState.draggingToken);
   }
   else if(mapState.isDragging) { mapState.offsetX=e.clientX-mapState.dragStartX; mapState.offsetY=e.clientY-mapState.dragStartY; drawMap(); }
 }
 function onMapUp() {
   mapState.isDragging=false;
   mapState.isFogPainting=false;
+  if(mapState.rotatingToken) {
+    const rotatedToken=mapState.rotatingToken;
+    mapState.rotatingToken=null;
+    syncMapTokens();
+    drawMap();
+    if (typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
+      broadcastTokenTransform(rotatedToken,false);
+      if (!multiplayer.isClient()) broadcastMapTokens();
+    }
+    return;
+  }
   if(mapState.wallDraft) {
     const w=mapState.wallDraft;
     mapState.wallDraft=null;
@@ -4966,6 +5334,10 @@ function dibujarFOV(ctxPrincipal, playerX, playerY, radio, walls, zoom, offsetX,
 function getTokenFacing(t) {
   return Number.isFinite(t?.facing) ? t.facing : 0;
 }
+function getTokenImageRotation(token, combatant) {
+  if(!token || !combatant?.portrait) return 0;
+  return getTokenFacing(token) + Math.PI / 2;
+}
 function playerHasVisionAccess(c) {
   if(!state.currentUser || !c) return false;
   if(c.userId === state.currentUser.id) return true;
@@ -5157,12 +5529,15 @@ function drawMap() {
     const initialsText = c.initials || initials(c.name);
     const color = c.color || '#a855f7';
     
-    ctx.beginPath();ctx.arc(t.x+3,t.y+3,t.radius,0,Math.PI*2);ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fill();
+    const tokenZoom = mapState.zoom || 1;
+    const tokenStroke = Math.max(1.15 / tokenZoom, 0.65);
+    const tokenInset = Math.max(1.5 / tokenZoom, 1);
+    ctx.beginPath();ctx.arc(t.x+2,t.y+2,t.radius,0,Math.PI*2);ctx.fillStyle='rgba(0,0,0,0.48)';ctx.fill();
     ctx.beginPath();ctx.arc(t.x,t.y,t.radius,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
-    ctx.lineWidth=3;ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.stroke();
+    ctx.lineWidth=tokenStroke;ctx.strokeStyle='rgba(255,255,255,0.22)';ctx.stroke();
     
     ctx.save();
-    ctx.beginPath();ctx.arc(t.x,t.y,t.radius-2,0,Math.PI*2);ctx.clip();
+    ctx.beginPath();ctx.arc(t.x,t.y,t.radius-tokenInset,0,Math.PI*2);ctx.clip();
     
     if (c.portrait) {
       let img = imageCache[c.id];
@@ -5173,18 +5548,23 @@ function drawMap() {
         img.onload = () => { drawMap(); };
       }
       if (img.complete && img.naturalWidth !== 0) {
-        ctx.drawImage(img, t.x - t.radius, t.y - t.radius, t.radius * 2, t.radius * 2);
+        const rotation=getTokenImageRotation(t,c);
+        ctx.save();
+        ctx.translate(t.x,t.y);
+        ctx.rotate(rotation);
+        ctx.drawImage(img, -t.radius, -t.radius, t.radius * 2, t.radius * 2);
+        ctx.restore();
       } else {
-        ctx.beginPath();ctx.arc(t.x,t.y,t.radius-3,0,Math.PI*2);ctx.fillStyle = color;ctx.fill();
+        ctx.beginPath();ctx.arc(t.x,t.y,t.radius-tokenInset,0,Math.PI*2);ctx.fillStyle = color;ctx.fill();
       }
     } else {
-      ctx.beginPath();ctx.arc(t.x,t.y,t.radius-3,0,Math.PI*2);ctx.fillStyle = color;ctx.fill();
+      ctx.beginPath();ctx.arc(t.x,t.y,t.radius-tokenInset,0,Math.PI*2);ctx.fillStyle = color;ctx.fill();
       ctx.fillStyle='#fff';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=6;ctx.fillText(initialsText,t.x,t.y);ctx.shadowBlur=0;
     }
     ctx.restore();
     
-    ctx.beginPath();ctx.arc(t.x,t.y,t.radius-3,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=2;ctx.stroke();
+    ctx.beginPath();ctx.arc(t.x,t.y,t.radius-tokenInset,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=tokenStroke;ctx.stroke();
     if(tokenTotals[tokenKey] > 1) {
       const badgeX=t.x+t.radius*0.62, badgeY=t.y-t.radius*0.62;
       ctx.beginPath();ctx.arc(badgeX,badgeY,9,0,Math.PI*2);ctx.fillStyle='rgba(15,8,30,0.95)';ctx.fill();
@@ -5202,8 +5582,9 @@ function drawMap() {
     }
     if(mapState.selectedTokenId === t.tokenId && canResizeToken(t, c)) {
       ctx.globalAlpha = 1;
-      ctx.beginPath();ctx.arc(t.x,t.y,t.radius+10,0,Math.PI*2);
-      ctx.strokeStyle='rgba(168,85,247,0.95)';ctx.lineWidth=3/(mapState.zoom||1);ctx.stroke();
+      const selectedGap = Math.max(4 / tokenZoom, 2);
+      ctx.beginPath();ctx.arc(t.x,t.y,t.radius+selectedGap,0,Math.PI*2);
+      ctx.strokeStyle='rgba(168,85,247,0.78)';ctx.lineWidth=Math.max(1.5/tokenZoom,0.8);ctx.stroke();
     }
     ctx.restore();
   });
@@ -6036,18 +6417,6 @@ function setMusic(theme,remoteOverride=false) {
   }
 }
 
-function toggleBoardFocus() {
-  const page = document.getElementById('page-mapa');
-  const btn = document.getElementById('toolBoardFocus');
-  if (!page) return;
-  const isExpanded = page.classList.toggle('board-focus');
-  if (btn) {
-    btn.classList.toggle('active', isExpanded);
-    btn.textContent = isExpanded ? '⛶ Restaurar' : '⛶ Tablero';
-  }
-  setTimeout(() => { resizeCanvas(); drawMap(); }, 30);
-}
-
 // ===================================================
 // MANUAL MANAGEMENT
 // ===================================================
@@ -6449,6 +6818,7 @@ const multiplayer = {
   code: null,
   clientUsernames: {},
   kicked: false,
+  started: false,
   
   isActive() {
     return this.active;
@@ -6587,6 +6957,7 @@ function cancelGameSelection() {
   }
   multiplayer.active = false;
   multiplayer.role = 'solo';
+  multiplayer.started = false;
   multiplayer.connections = [];
   multiplayer.clientUsernames = {};
 }
@@ -6594,6 +6965,7 @@ function cancelGameSelection() {
 function playSolo() {
   multiplayer.active = false;
   multiplayer.role = 'solo';
+  multiplayer.started = false;
   document.getElementById('gameSelectionScreen').classList.add('hidden');
   document.getElementById('headerGameCodeBadge').style.display = 'none';
   launchApp();
@@ -6669,6 +7041,7 @@ function showCreateGameMode() {
 
   multiplayer.active = true;
   multiplayer.role = 'host';
+  multiplayer.started = false;
   multiplayer.connections = [];
   multiplayer.clientUsernames = {};
   multiplayer.updateConnectedLobbyUI();
@@ -6775,6 +7148,9 @@ function handleHostIncomingData(conn, data) {
       manualAdaptation,
       mapView: getCurrentMapView()
     }));
+    if(multiplayer.started) {
+      conn.send(JSON.stringify({ type:'start_game', code:'TM-' + multiplayer.code }));
+    }
 
     addChatMessage('sys', '', `🔌 <b>${escapeHTML(data.username)}</b> se ha unido a la partida.`);
     multiplayer.broadcast({ type: 'characters_update', characters });
@@ -6857,6 +7233,7 @@ function handleHostIncomingData(conn, data) {
     renderInventarioPage();
     renderHechizosPage();
     renderAtaquePage();
+    renderQuickCombatPanel();
     renderInitiative();
     multiplayer.connections.forEach(c => {
       if (c.open) c.send(JSON.stringify({ type: 'characters_update', characters }));
@@ -6910,9 +7287,11 @@ function handleHostIncomingData(conn, data) {
     if(!ownedCharacter) return;
     const safeData = {
       type:'spell_cast', charName:ownedCharacter.name,
-      spellName:String(data.spellName ?? ''), spellIcon:String(data.spellIcon || '✨')
+      spellName:String(data.spellName ?? ''), spellIcon:String(data.spellIcon || '✨'),
+      spellDamage:String(data.spellDamage || ''),
+      dmgRoll:String(data.dmgRoll || '').replace(/<[^>]*>/g,'')
     };
-    addChatMessage('player', escapeHTML(safeData.charName), `Conjura: <b>${escapeHTML(safeData.spellName)}</b> 🎇`);
+    addChatMessage('player', escapeHTML(safeData.charName), `Conjura: <b>${escapeHTML(safeData.spellName)}</b>${escapeHTML(safeData.dmgRoll)} 🎇`);
     SoundEngine.spell(safeData.spellIcon);
     multiplayer.connections.forEach(c => {
       if (c !== conn && c.open) c.send(JSON.stringify(safeData));
@@ -6937,7 +7316,8 @@ function handleHostIncomingData(conn, data) {
 
 function startHostedGame() {
   if (multiplayer.connections.length === 0) return;
-  multiplayer.broadcast({ type: 'start_game' });
+  multiplayer.started = true;
+  multiplayer.broadcast({ type: 'start_game', code:'TM-' + multiplayer.code });
   
   document.getElementById('gameSelectionScreen').classList.add('hidden');
   document.getElementById('headerGameCodeBadge').style.display = 'flex';
@@ -7067,7 +7447,7 @@ function handleClientIncomingData(data) {
     document.getElementById('gameSelectionScreen').classList.add('hidden');
     
     document.getElementById('headerGameCodeBadge').style.display = 'flex';
-    document.getElementById('headerGameCodeVal').textContent = document.getElementById('joinGameCode').value.trim().toUpperCase();
+    document.getElementById('headerGameCodeVal').textContent = data.code || document.getElementById('joinGameCode').value.trim().toUpperCase();
 
     launchApp();
   }
@@ -7089,6 +7469,7 @@ function handleClientIncomingData(data) {
     renderInventarioPage();
     renderHechizosPage();
     renderAtaquePage();
+    renderQuickCombatPanel();
     renderInitiative();
     
     const m = maps.find(m => m.id === state.activeMapId);
@@ -7272,7 +7653,7 @@ function handleClientIncomingData(data) {
     }
   }
   else if (data.type === 'spell_cast') {
-    addChatMessage('player', escapeHTML(data.charName), `Conjura: <b>${escapeHTML(data.spellName)}</b> 🎇`);
+    addChatMessage('player', escapeHTML(data.charName), `Conjura: <b>${escapeHTML(data.spellName)}</b>${data.dmgRoll || ''} 🎇`);
     SoundEngine.spell(data.spellIcon || '✨');
   }
   else if (data.type === 'attack_action') {

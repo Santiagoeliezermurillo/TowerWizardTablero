@@ -155,6 +155,12 @@
       <button onclick="adjustAppVolume(0.1)" aria-label="Subir volumen">＋</button>
       <button id="appMuteButton" onclick="toggleAppMute()" aria-label="Silenciar o activar sonido">🔊</button>
     </div>
+    <div class="volume-control volume-control-weather" title="Volumen personal del clima: solo cambia el clima en este dispositivo">
+      <button onclick="adjustChannelVolume('weather',-0.1)" aria-label="Bajar volumen del clima">−</button>
+      <span id="weatherHeaderVolumeLabel">Clima 70%</span>
+      <button onclick="adjustChannelVolume('weather',0.1)" aria-label="Subir volumen del clima">＋</button>
+      <button id="weatherHeaderMuteButton" onclick="toggleChannelMute('weather')" aria-label="Silenciar o activar clima">🔊</button>
+    </div>
     <div class="user-badge">
       <div class="role-dot" id="userRoleDot"></div>
       <span id="userBadgeName">–</span>
@@ -207,8 +213,6 @@
         <div class="tb-div"></div>
         
         
-        <button onclick="fitMapToBoard()" title="Encajar el mapa completo dentro del tablero">▣ Encajar</button>
-        <button id="toolBoardFocus" onclick="toggleBoardFocus()" title="Ampliar o restaurar el tablero">⛶ Tablero</button>
       </div>
       <div class="map-quick-tools" aria-label="Herramientas rápidas del tablero">
         <button id="sideToolFog" onclick="toggleFogOfWar()" title="Activar niebla de guerra" data-tooltip="Activar niebla de guerra: Bloquea la visión de cada participante, que sólo podrá ver a través de la niebla que despejen los personajes de su equipo.">☁</button>
@@ -223,6 +227,10 @@
         <div class="map-tool-divider"></div>
         <button id="quickToolGrid" class="active" onclick="toggleMapGrid()" title="Mostrar u ocultar cuadrícula">▦</button>
         <button onclick="resetMapView()" title="Recentrar vista del tablero">◎</button>
+      </div>
+      <div class="quick-combat-dock" id="quickCombatDock">
+        <button id="quickCombatToggle" class="quick-combat-toggle" onclick="toggleQuickCombatPanel()">Combate</button>
+        <div class="quick-combat-panel glass" id="quickCombatPanel" style="display:none;"></div>
       </div>
       <!-- Weather Selection Panel -->
       <div class="weather-panel glass" id="weatherPanel" style="display:none;width:360px;">
@@ -652,6 +660,16 @@
         <div class="form-group"><label>Iniciativa</label><input type="number" id="newCharInit" value="10"></div>
         <div class="form-group"><label>HP Máx</label><input type="number" id="newCharHp" value="15"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group token-color-field">
+          <label>Color del token</label>
+          <input type="color" id="newCharColor" value="#a855f7">
+        </div>
+        <div class="form-group token-color-hint">
+          <label>Vista del aro</label>
+          <div class="token-color-preview"><span id="newCharColorPreview"></span> Cambia el color del borde fino del token.</div>
+        </div>
+      </div>
       <div class="sec-sub" style="margin-top:8px;">Atributos</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
         <div class="form-group" style="margin:0;"><label>FUE</label><input type="number" id="newCharStr" value="10"></div>
@@ -772,6 +790,7 @@
         <div class="form-group"><label>Nivel</label><input type="number" id="newSpellLevel" value="1" min="0" max="9"></div>
         <div class="form-group"><label>Icono (emoji)</label><input type="text" id="newSpellIcon" placeholder="🔥" maxlength="4"></div>
       </div>
+      <div class="form-group"><label>DaÃ±o o efecto opcional</label><input type="text" id="newSpellDamage" placeholder="Ej. 2d6+3, 1d10 o empuja 3 casillas" maxlength="24"></div>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
