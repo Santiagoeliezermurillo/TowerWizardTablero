@@ -135,6 +135,7 @@ saveLS('crq_structure_catalog_version',structureCatalogVersion);
 let customMusicTracks = [];
 let customMusicAudio = null;
 let externalMusicAudio = null;
+let externalYoutubeSyncTimer = null;
 let customWeatherTracks = [];
 let customWeatherAudio = null;
 
@@ -3045,13 +3046,27 @@ function toggleChannelMute(channel) {
   const volume=getChannelVolume(channel);
   applyChannelVolume(channel,volume>0?0:channelVolumeBeforeMute[channel]);
 }
-function applyExternalYoutubeVolume() {
+function postExternalYoutubeCommand(func,args=[]) {
   const iframe=document.getElementById('externalYoutubePlayer');
   if(!iframe?.contentWindow) return;
-  const volume=Math.round(100*SoundEngine.getVolume()*SoundEngine.getMusicVolume());
-  iframe.contentWindow.postMessage(JSON.stringify({event:'command',func:'setVolume',args:[volume]}),'*');
-  iframe.contentWindow.postMessage(JSON.stringify({event:'command',func:volume>0?'unMute':'mute',args:[]}),'*');
+  iframe.contentWindow.postMessage(JSON.stringify({event:'command',func,args}),'*');
 }
+function syncExternalYoutubePlayer() {
+  const volume=Math.round(100*SoundEngine.getVolume()*SoundEngine.getMusicVolume());
+  postExternalYoutubeCommand('setVolume',[volume]);
+  postExternalYoutubeCommand(volume>0?'unMute':'mute',[]);
+  postExternalYoutubeCommand('playVideo',[]);
+}
+function applyExternalYoutubeVolume() {
+  syncExternalYoutubePlayer();
+}
+function resumeExternalMusicPlayback() {
+  if(externalMusicAudio) externalMusicAudio.play().catch(()=>{});
+  syncExternalYoutubePlayer();
+}
+window.syncExternalYoutubePlayer = syncExternalYoutubePlayer;
+window.applyExternalYoutubeVolume = applyExternalYoutubeVolume;
+window.resumeExternalMusicPlayback = resumeExternalMusicPlayback;
 
 const itemStickers = {
   "Armas": ["🗡️", "⚔️", "🪓", "🏹", "🔨", "🔱", "🪄", "🪃", "⛏️", "⛓️"],
@@ -5846,6 +5861,11 @@ function toggleMusicPanel() {
   if(isHidden) renderCustomMusicList();
 }
 function stopExternalMusic() {
+  if(externalYoutubeSyncTimer) {
+    clearTimeout(externalYoutubeSyncTimer);
+    externalYoutubeSyncTimer=null;
+  }
+  postExternalYoutubeCommand('stopVideo',[]);
   if(externalMusicAudio) {
     externalMusicAudio.pause();
     externalMusicAudio.src='';
@@ -5878,7 +5898,7 @@ function getExternalMusicSource(rawUrl) {
   }
   if(youtubeId) {
     const safeId=/^[a-zA-Z0-9_-]{6,}$/.test(youtubeId) ? youtubeId : '';
-    if(safeId) return {kind:'youtube',url:`https://www.youtube-nocookie.com/embed/${safeId}?autoplay=1&loop=1&playlist=${safeId}&enablejsapi=1`};
+    if(safeId) return {kind:'youtube',url:`https://www.youtube-nocookie.com/embed/${safeId}?autoplay=1&mute=1&loop=1&playlist=${safeId}&enablejsapi=1&playsinline=1`};
   }
   if(host==='youtu.be'||host==='youtube.com'||host.endsWith('.youtube.com')) return {error:'youtube'};
   if(/\.mp4(?:$|[?#])/i.test(url.href)) return {error:'video'};
@@ -5914,8 +5934,17 @@ function playExternalMusic(rawUrl,remoteOverride=false) {
   if(source.kind==='youtube') {
     if(player) {
       player.style.display='block';
-      player.innerHTML=`<iframe id="externalYoutubePlayer" title="Reproductor de YouTube" src="${escapeHTML(source.url)}" style="width:100%;height:152px;border:0;border-radius:8px;" allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" onload="applyExternalYoutubeVolume()" allowfullscreen></iframe>`;
+      player.innerHTML=`
+        <iframe id="externalYoutubePlayer" class="external-youtube-player" title="Reproductor de YouTube" src="${escapeHTML(source.url)}" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" onload="syncExternalYoutubePlayer()" allowfullscreen></iframe>
+        <div class="external-music-sync">
+          <button class="weather-opt external-music-resume" type="button" onclick="resumeExternalMusicPlayback()">Activar musica</button>
+          <span>Si el navegador del jugador bloquea el audio, toca este boton una vez.</span>
+        </div>`;
     }
+    externalYoutubeSyncTimer=setTimeout(()=>{
+      externalYoutubeSyncTimer=null;
+      syncExternalYoutubePlayer();
+    },900);
   } else {
   externalMusicAudio=new Audio(source.url);
   externalMusicAudio.loop=true;
