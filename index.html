@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TW — Virtual Tabletop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+
+<!-- 3D Dice Overlay -->
+<div id="dice3DOverlay">
+  <div id="dice3DContainer" style="display:flex;gap:25px 35px;justify-content:center;align-items:center;flex-wrap:wrap;max-width:90vw;padding:40px;"></div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-container">
+    <div class="auth-gem">🔮</div>
+    <div class="auth-logo">TW</div>
+    <div class="auth-subtitle">Virtual Tabletop</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</div>
+      <div class="auth-tab" id="tabRegister" onclick="switchAuthTab('register')">Registro</div>
+    </div>
+    <!-- Login -->
+    <div id="panelLogin">
+      <div class="auth-field"><label>Correo electrónico</label><input id="loginEmail" type="email" autocomplete="email" placeholder="aventurero@gmail.com"></div>
+      <div class="auth-field"><label>Contraseña</label><input id="loginPass" type="password" placeholder="••••••••"></div>
+      <div class="auth-field">
+        <label>Entrar como</label>
+        <select id="loginRole">
+          <option value="player">🧙 Jugador</option>
+          <option value="dm">👑 Dungeon Master</option>
+        </select>
+      </div>
+      <div class="auth-error" id="loginError"></div>
+      <button class="btn-auth" onclick="doLogin()">⚔️ Entrar a la Campaña</button>
+    </div>
+    <!-- Register -->
+    <div id="panelRegister" style="display:none;">
+      <div class="auth-field"><label>Nombre de Usuario</label><input id="regUser" type="text" placeholder="Ej. Thorin el Sombrío"></div>
+      <div class="auth-field"><label>Gmail verdadero</label><input id="regEmail" type="email" autocomplete="email" placeholder="aventurero@gmail.com"></div>
+      <div class="auth-hint">Solo se aceptan cuentas @gmail.com con formato real. La verificación completa por código requiere servidor de correo.</div>
+      <div class="auth-field"><label>Contraseña</label><input id="regPass" type="password" placeholder="••••••••"></div>
+      <div class="auth-field">
+        <label>Rol en la Campaña</label>
+        <select id="regRole">
+          <option value="player">🧙 Jugador (Aventurero)</option>
+          <option value="dm">👑 Dungeon Master</option>
+        </select>
+      </div>
+      <div class="auth-error" id="regError"></div>
+      <button class="btn-auth" onclick="doRegister()">✨ Crear Cuenta</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME SELECTION SCREEN -->
+<div id="gameSelectionScreen" class="hidden">
+  <div class="auth-container">
+    <div class="auth-gem">🏰</div>
+    <div class="auth-logo">Partida Multijugador</div>
+    <div class="auth-subtitle">Conéctate con tu grupo en tiempo real</div>
+    
+    <div class="game-options-vertical" id="gameSelectionOptions">
+      <!-- Create Game Button -->
+      <button class="btn-auth" id="btnCreateGameOption" onclick="showCreateGameMode()">🏰 Crear Nueva Partida</button>
+      
+      <!-- Join Game Button -->
+      <button class="btn-auth btn-auth-secondary" id="btnJoinGameOption" onclick="showJoinGameMode()">🛡️ Unirse a una Partida</button>
+
+      <!-- DM Library Buttons -->
+      <button class="btn-auth btn-auth-secondary" id="btnLoadSavedGameOption" onclick="showLoadSavedGameMode()">📂 Cargar Partida Guardada</button>
+      <button class="btn-auth btn-auth-secondary" id="btnLoadManualOption" onclick="showManualSelectionMode()">📚 Biblioteca de Manuales</button>
+      
+      
+      <!-- Solo Game Button -->
+      <button class="btn-auth btn-auth-tertiary" onclick="playSolo()">Jugar en Solitario (Local)</button>
+    </div>
+    
+    <!-- Create Game Panel -->
+    <div id="panelCreateGame" style="display:none; margin-top: 20px;">
+      <div class="auth-subtitle" style="margin-bottom: 15px; font-size: 0.8rem;">Creando partida como anfitrión...</div>
+      <div class="auth-field" id="hostCodeContainer" style="display:none; text-align: center; margin-bottom: 20px;">
+        <label style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-3); font-weight: bold;">CÓDIGO DE PARTIDA</label>
+        <div id="hostGameCode" style="font-size: 2.2rem; font-family: var(--font-title); font-weight: bold; color: var(--gold); letter-spacing: 4px; margin: 10px 0; background: rgba(0,0,0,0.4); padding: 12px; border-radius: var(--radius-sm); border: 1px solid rgba(245,158,11,0.3); text-shadow: 0 0 10px rgba(245,158,11,0.4);">Cargando...</div>
+        <div style="font-size: 0.8rem; color: var(--text-3);">Comparte este código con tus jugadores para que se unan a tu partida.</div>
+      </div>
+      <div id="hostStatus" style="font-size: 0.9rem; color: var(--text-2); text-align: center; margin-bottom: 20px;">
+        Generando código de conexión...
+      </div>
+      <div class="connected-players-list" style="margin-bottom: 20px; text-align: left;">
+        <label style="display:block; font-size:0.8rem; text-transform:uppercase; color:var(--text-3); font-weight:bold; margin-bottom:8px;">Jugadores Conectados (<span id="connectedCount">0</span>)</label>
+        <div id="connectedPlayers" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: var(--radius-sm); font-size: 0.9rem; border: 1px solid var(--glass-border);">
+          <div style="color:var(--text-dim); font-style:italic; text-align:center; padding:10px 0;">Esperando aventureros...</div>
+        </div>
+      </div>
+      <button class="btn-auth" id="btnStartHostedGame" style="display:none;" onclick="startHostedGame()">🧙 Iniciar Partida</button>
+      <button class="btn-auth btn-auth-secondary" style="margin-top: 10px;" onclick="cancelGameSelection()">Atrás</button>
+    </div>
+    
+    <!-- Join Game Panel -->
+    <div id="panelJoinGame" style="display:none; margin-top: 20px;">
+      <div class="auth-field">
+        <label>Código de Partida</label>
+        <input id="joinGameCode" type="text" placeholder="Ej. J8K9B" style="text-align: center; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 2px;">
+      </div>
+      <div id="joinStatus" class="auth-error" style="color: var(--text-2); margin-bottom: 20px; text-align: center;"></div>
+      <button class="btn-auth" onclick="doJoinGame()">⚔️ Conectarse a la Partida</button>
+      <button class="btn-auth btn-auth-secondary" style="margin-top: 10px;" onclick="cancelGameSelection()">Atrás</button>
+    </div>
+
+    <!-- Saved Game Panel -->
+    <div id="panelLoadSavedGame" class="selection-library-panel" style="display:none;">
+      <div class="auth-subtitle">Continuar una sesión guardada</div>
+      <div class="selection-library-list" id="selectionSaveList"></div>
+      <button class="btn-auth btn-auth-secondary" onclick="cancelGameSelection()">Atrás</button>
+    </div>
+
+    <!-- Manual Panel -->
+    <div id="panelLoadManual" class="selection-library-panel" style="display:none;">
+      <div class="auth-subtitle">Biblioteca del Dungeon Master</div>
+      <input type="file" id="selectionManualFiles" accept=".txt,.md,.json,.pdf,text/plain,text/markdown,application/pdf" multiple onchange="importManualFiles(event)" style="display:none;">
+      <button class="btn-auth" onclick="document.getElementById('selectionManualFiles').click()">📚 Importar manuales</button>
+      <div class="selection-library-list" id="selectionManualList"></div>
+      <button class="btn-auth btn-auth-secondary" onclick="openManualLibraryFromSelection()">✎ Abrir editor de manuales</button>
+      <button class="btn-auth btn-auth-secondary" onclick="cancelGameSelection()">Atrás</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+
+<header>
+  <div class="logo"><span class="logo-gem">🔮</span>TW</div>
+  <div class="nav-tabs" id="mainNavTabs">
+    <button class="active" data-page="mapa"><span class="tab-icon">🗺</span>Mapa</button>
+    <button data-page="recursos" id="tabRecursos"><span class="tab-icon">📚</span><span class="tab-label">Recursos</span></button>
+    <button data-page="inventario"><span class="tab-icon">🎒</span>Inventario</button>
+    <button data-page="manual" id="tabManual"><span class="tab-icon">📚</span>Manual</button>
+    <button data-page="partida" id="tabPartida"><span class="tab-icon">💾</span>Partida</button>
+  </div>
+  <div class="header-right">
+    <div class="game-code-badge" id="headerGameCodeBadge" style="display:none; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); color:var(--gold); padding:6px 12px; border-radius:var(--radius-sm); font-family:var(--font-title); font-size:0.85rem; font-weight:bold; letter-spacing:1px; cursor:pointer; align-items:center; gap:6px;" onclick="copyGameCodeToClipboard()" title="Haz clic para copiar el código de la partida">
+      <span>Código:</span> <span id="headerGameCodeVal">-</span>
+    </div>
+    <div class="volume-control" title="Volumen personal: solo cambia el sonido en este dispositivo">
+      <button onclick="adjustAppVolume(-0.1)" aria-label="Bajar volumen">−</button>
+      <span id="appVolumeLabel">70%</span>
+      <button onclick="adjustAppVolume(0.1)" aria-label="Subir volumen">＋</button>
+      <button id="appMuteButton" onclick="toggleAppMute()" aria-label="Silenciar o activar sonido">🔊</button>
+    </div>
+    <div class="user-badge">
+      <div class="role-dot" id="userRoleDot"></div>
+      <span id="userBadgeName">–</span>
+    </div>
+    <button class="btn-logout" onclick="doLogout()">Salir</button>
+  </div>
+</header>
+
+<!-- ===== PAGE MAPA ===== -->
+<div class="page active" id="page-mapa">
+  <div class="mapa-layout">
+    <div class="map-wrap" id="mapContainer">
+      <canvas id="mapCanvas"></canvas>
+      <div class="token-action-panel glass" id="tokenActionPanel" style="display:none;">
+        <div class="token-action-header">
+          <span>Token seleccionado</span>
+          <button onclick="closeTokenActionPanel()" aria-label="Cerrar panel de token">×</button>
+        </div>
+        <div class="token-action-preview" id="tokenActionPreview"></div>
+        <div class="token-action-name" id="tokenActionName">Token</div>
+        <div class="token-action-meta" id="tokenActionMeta">Solo el Dungeon Master puede editarlo.</div>
+        <div class="token-size-control">
+          <button onclick="adjustSelectedTokenSize(-6)" aria-label="Achicar token">−</button>
+          <strong id="tokenSizeLabel">100%</strong>
+          <button onclick="adjustSelectedTokenSize(6)" aria-label="Agrandar token">＋</button>
+        </div>
+        <div class="token-action-buttons">
+          <button class="token-hide-btn" id="tokenHideButton" onclick="toggleSelectedTokenHidden()">Ocultar</button>
+          <button class="token-delete-btn" onclick="deleteSelectedMapToken()">Eliminar</button>
+        </div>
+      </div>
+      <div class="player-kick-panel glass" id="playerKickPanel" style="display:none;">
+        <div class="player-kick-header">
+          <span>Jugadores conectados</span>
+          <button onclick="togglePlayerKickPanel(false)" aria-label="Cerrar panel de jugadores">×</button>
+        </div>
+        <div class="player-kick-list" id="playerKickList">
+          <div class="player-kick-empty">No hay jugadores conectados.</div>
+        </div>
+      </div>
+      <div class="map-left-tools" id="playerAdminTools" aria-label="Administración de jugadores">
+        <button id="quickToolPlayers" onclick="togglePlayerKickPanel()" title="Echar jugadores conectados">👥</button>
+      </div>
+      <div class="map-toolbar">
+        <button id="toolMaps" onclick="openMapListModal()">📂 Mapas</button>
+        <div class="tb-div" id="tbDivDM"></div>
+        <button id="toolWeather" onclick="toggleWeatherPanel()">☁️ Climático</button>
+        <button id="toolStructures" onclick="toggleStructuresPanel()">🏰 Estructuras</button>
+        <button id="toolMusic" onclick="toggleMusicPanel()">🎵 Música</button>
+        <div class="tb-div"></div>
+        
+        
+        <button onclick="fitMapToBoard()" title="Encajar el mapa completo dentro del tablero">▣ Encajar</button>
+        <button id="toolBoardFocus" onclick="toggleBoardFocus()" title="Ampliar o restaurar el tablero">⛶ Tablero</button>
+      </div>
+      <div class="map-quick-tools" aria-label="Herramientas rápidas del tablero">
+        <button id="sideToolFog" onclick="toggleFogOfWar()" title="Activar niebla de guerra" data-tooltip="Activar niebla de guerra: Bloquea la visión de cada participante, que sólo podrá ver a través de la niebla que despejen los personajes de su equipo.">☁</button>
+        <button id="sideToolFogPeek" onclick="toggleSeeThroughFog()" title="Ver a través de la niebla" data-tooltip="Ver a través de la niebla: Te permite, solo a ti, ver a través de las zonas ocultas por la niebla de guerra. Desactívalo si compartes tu pantalla.">👁</button>
+        <button id="sideToolExploredFog" onclick="toggleExploredFogAreas()" title="Habilitar zonas exploradas" data-tooltip="Habilitar zonas exploradas: Permite ver ligeramente despejadas las zonas ya exploradas en la niebla de guerra.">👣</button>
+        <div class="map-tool-divider"></div>
+        <button id="quickToolMove" class="active" onclick="setMapTool('move')" title="Mover tablero o fichas">✥</button>
+        <button id="quickToolPing" onclick="setMapTool('ping')" title="Señalar una posición">⌖</button>
+        <button id="quickToolMeasure" onclick="setMapTool('measure')" title="Medir distancia por casillas">📏</button>
+        <button id="quickToolWall" onclick="setMapTool('wall')" title="Dibujar muro invisible">▥</button>
+        <button id="quickToolWallRemove" onclick="setMapTool('wall-remove')" title="Quitar muro invisible">⌫</button>
+        <div class="map-tool-divider"></div>
+        <button id="quickToolGrid" class="active" onclick="toggleMapGrid()" title="Mostrar u ocultar cuadrícula">▦</button>
+        <button onclick="resetMapView()" title="Recentrar vista del tablero">◎</button>
+      </div>
+      <!-- Weather Selection Panel -->
+      <div class="weather-panel glass" id="weatherPanel" style="display:none;width:360px;">
+        <div class="weather-title">Ambientación Climática</div>
+        <div class="panel-volume-control" title="Volumen personal del clima en este dispositivo">
+          <span>🔊 Volumen del clima</span>
+          <button onclick="adjustChannelVolume('weather',-0.1)" aria-label="Bajar volumen del clima">−</button>
+          <strong id="weatherVolumeLabel">70%</strong>
+          <button onclick="adjustChannelVolume('weather',0.1)" aria-label="Subir volumen del clima">＋</button>
+          <button id="weatherMuteButton" onclick="toggleChannelMute('weather')" aria-label="Silenciar o activar clima">🔊</button>
+        </div>
+        <div class="weather-subtitle">Estación del año</div>
+        <div class="weather-options" style="grid-template-columns: repeat(2, 1fr);">
+          <button onclick="setWeather('spring')" id="w-spring" class="weather-opt" style="font-size:0.75rem;">🌸 Primavera</button>
+          <button onclick="setWeather('summer')" id="w-summer" class="weather-opt" style="font-size:0.75rem;">🌞 Verano</button>
+          <button onclick="setWeather('autumn')" id="w-autumn" class="weather-opt" style="font-size:0.75rem;">🍂 Otoño</button>
+          <button onclick="setWeather('winter')" id="w-winter" class="weather-opt" style="font-size:0.75rem;">🧊 Invierno</button>
+        </div>
+        <div class="weather-subtitle">Clima del momento</div>
+        <div class="weather-options" style="grid-template-columns: repeat(3, 1fr);">
+          <button onclick="setWeather('clear')" id="w-clear" class="weather-opt" style="font-size:0.75rem;">☀️ Sol</button>
+          <button onclick="setWeather('blaze')" id="w-blaze" class="weather-opt" style="font-size:0.75rem;">🔥 Calor</button>
+          <button onclick="setWeather('drizzle')" id="w-drizzle" class="weather-opt" style="font-size:0.75rem;">🌧️ Llovizna</button>
+          <button onclick="setWeather('rain')" id="w-rain" class="weather-opt" style="font-size:0.75rem;">🌧️ Lluvia</button>
+          <button onclick="setWeather('storm')" id="w-storm" class="weather-opt" style="font-size:0.75rem;">⛈️ Tormenta</button>
+          <button onclick="setWeather('wind')" id="w-wind" class="weather-opt" style="font-size:0.75rem;">💨 Viento</button>
+          <button onclick="setWeather('snow')" id="w-snow" class="weather-opt" style="font-size:0.75rem;">❄️ Nieve</button>
+          <button onclick="setWeather('blizzard')" id="w-blizzard" class="weather-opt" style="font-size:0.75rem;">🏔️ Ventisca</button>
+          <button onclick="setWeather('night')" id="w-night" class="weather-opt" style="font-size:0.75rem;">🌙 Noche</button>
+          <button onclick="setWeather('fog')" id="w-fog" class="weather-opt" style="font-size:0.75rem;">🌫️ Niebla</button>
+          <button onclick="setWeather('magic')" id="w-magic" class="weather-opt" style="font-size:0.75rem;">🔮 Arcano</button>
+        </div>
+        <div class="weather-subtitle">Grabaciones reales del Dungeon Master</div>
+        <input type="file" id="customWeatherFiles" accept="audio/*" multiple onchange="importCustomWeather(event)">
+        <div id="customWeatherList" style="display:flex;flex-direction:column;gap:5px;max-height:110px;overflow-y:auto;"></div>
+        <div style="font-size:0.7rem;color:var(--text-3);">Importa audios ambientales y reprodúcelos cuando la narrativa lo requiera.</div>
+        <button onclick="setWeather('none')" id="w-none" class="weather-opt weather-stop active">⏹ Sin clima: apagar sonido y animación</button>
+      </div>
+      <div class="weather-panel glass" id="structuresPanel" style="display:none;width:370px;">
+        <div class="weather-title">Estructuras del escenario</div>
+        <div class="weather-subtitle">Selecciona un sticker y usa Agregar o Quitar sobre el tablero</div>
+        <div class="weather-options" style="grid-template-columns:repeat(2,1fr);">
+          <button id="structureAddMode" class="weather-opt active" onclick="setStructureMode('add')">＋ Agregar</button>
+          <button id="structureRemoveMode" class="weather-opt" onclick="setStructureMode('remove')">− Quitar</button>
+        </div>
+        <div id="structureStickerPicker" class="weather-options" style="grid-template-columns:repeat(5,1fr);"></div>
+        <div class="weather-subtitle">Sticker personalizado del Dungeon Master</div>
+        <div style="display:grid;grid-template-columns:64px 1fr;gap:6px;">
+          <input id="newStructureIcon" type="text" maxlength="8" placeholder="🏰" title="Emoji opcional">
+          <input id="newStructureName" type="text" maxlength="32" placeholder="Nombre del sticker">
+        </div>
+        <input id="newStructureImage" type="file" accept="image/*" title="Imagen opcional de la estructura">
+        <div class="weather-options" style="grid-template-columns:repeat(2,1fr);">
+          <button class="weather-opt" onclick="addStructureSticker()">＋ Guardar y colocar</button>
+          <button class="weather-opt" onclick="restoreDefaultStructureStickers()">↻ Restaurar biblioteca</button>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:0.8rem;">Tamaño <select id="structureSize" style="flex:1;"><option value="34">Pequeño</option><option value="52" selected>Mediano</option><option value="76">Grande</option><option value="110">Enorme</option></select></label>
+        <button onclick="cancelStructurePlacement()" class="weather-opt weather-stop">⏹ Cancelar edición</button>
+        <div style="font-size:0.72rem;color:var(--text-3);">También puedes usar doble clic sobre una estructura para eliminarla.</div>
+      </div>
+      <div class="weather-panel glass" id="musicPanel" style="display:none;width:340px;">
+        <div class="weather-title">Música ambiental</div>
+        <div class="panel-volume-control" title="Volumen personal de la música en este dispositivo">
+          <span>🎵 Volumen de música</span>
+          <button onclick="adjustChannelVolume('music',-0.1)" aria-label="Bajar volumen de música">−</button>
+          <strong id="musicVolumeLabel">70%</strong>
+          <button onclick="adjustChannelVolume('music',0.1)" aria-label="Subir volumen de música">＋</button>
+          <button id="musicMuteButton" onclick="toggleChannelMute('music')" aria-label="Silenciar o activar música">🔊</button>
+        </div>
+        <div class="weather-subtitle">El Dungeon Master controla la atmósfera de la mesa</div>
+        <div class="weather-options" style="grid-template-columns:repeat(2,1fr);">
+          <button id="music-tavern" class="weather-opt music-opt" onclick="setMusic('tavern')">🍺 Taberna</button>
+          <button id="music-combat" class="weather-opt music-opt" onclick="setMusic('combat')">⚔️ Combate</button>
+          <button id="music-explore" class="weather-opt music-opt" onclick="setMusic('explore')">🧭 Exploración</button>
+          <button id="music-mystery" class="weather-opt music-opt" onclick="setMusic('mystery')">🔮 Misterio</button>
+          <button id="music-dungeon" class="weather-opt music-opt" onclick="setMusic('dungeon')">🕯️ Mazmorra</button>
+          <button id="music-victory" class="weather-opt music-opt" onclick="setMusic('victory')">🏆 Victoria</button>
+        </div>
+        <div class="weather-subtitle">Música desde tu computadora</div>
+        <input type="file" id="customMusicFiles" accept="audio/*" multiple onchange="importCustomMusic(event)">
+        <input type="file" id="customMusicFolder" accept="audio/*" multiple webkitdirectory directory onchange="importCustomMusic(event)" style="display:none;">
+        <button class="weather-opt" onclick="document.getElementById('customMusicFolder').click()">📁 Importar carpeta</button>
+        <div id="customMusicList" style="display:flex;flex-direction:column;gap:5px;max-height:145px;overflow-y:auto;"></div>
+        <div style="font-size:0.7rem;color:var(--text-3);">Los audios importados permanecen disponibles mientras esta página siga abierta.</div>
+        <div class="weather-subtitle">Video de YouTube para ambientación</div>
+        <input type="url" id="externalMusicUrl" placeholder="Pega un enlace de YouTube o audio M4A">
+        <div class="weather-options" style="grid-template-columns:repeat(2,1fr);">
+          <button class="weather-opt" onclick="playExternalMusicFromInput()">▶ Reproducir</button>
+          <button class="weather-opt" onclick="clearExternalMusic()">✕ Quitar video</button>
+        </div>
+        <div id="externalMusicPlayer" style="display:none;"></div>
+        <div style="font-size:0.7rem;color:var(--text-3);">YouTube se reproduce con su reproductor oficial dentro del panel. También puedes usar un enlace directo o firmado de audio M4A.</div>
+        <button id="music-none" onclick="setMusic('none')" class="weather-opt weather-stop">⏹ Detener música</button>
+      </div>
+    </div>
+    <!-- Initiative -->
+    <div class="map-side-panel" id="mapInitiativePanel">
+      <div class="side-header"><span>Iniciativa</span>
+        <div id="dmInitControls" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <button onclick="rollInitiativeForCombatants()" class="initiative-roll-btn">Tirar Iniciativa</button>
+          <button onclick="nextTurn()" class="initiative-mini-btn">Sig.</button>
+          <button onclick="nextRound()" class="initiative-mini-btn">Ronda+</button>
+          <button onclick="resetRounds()" class="initiative-mini-btn initiative-reset-btn" title="Reiniciar rondas">🔄</button>
+        </div>
+      </div>
+      <div class="round-counter">Ronda <span id="roundCount">1</span></div>
+      <div class="initiative-list" id="initiativeList"></div>
+    </div>
+    <!-- Chat -->
+    <div class="map-chat-panel">
+      <div class="side-header">Registro</div>
+      <div class="chat-messages" id="chatBox">
+        <div class="chat-msg msg-sys">⚔️ ¡Bienvenidos a la campaña! Que los dados sean favorables.</div>
+      </div>
+      <div class="chat-input-area">
+        <select class="sender-select" id="chatSender"><option value="DM">👑 Dungeon Master</option></select>
+        <div class="chat-input-row">
+          <input type="text" id="chatInputMsg" placeholder="Habla o narra..." onkeypress="if(event.key==='Enter') sendChatMessage()">
+          <button onclick="sendChatMessage()">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Dice Bar -->
+  <div class="map-bottom-bar">
+    <div class="dice-icons-row">
+      <button class="dice-icon-btn" onclick="rollDice(4)" title="d4"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,6 44,38 4,38"/><line x1="24" y1="26" x2="24" y2="6"/><line x1="24" y1="26" x2="4" y2="38"/><line x1="24" y1="26" x2="44" y2="38"/><text x="24" y="32" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">4</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(6)" title="d6"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,6 42,16 42,36 24,46 6,36 6,16"/><line x1="24" y1="26" x2="24" y2="46"/><line x1="24" y1="26" x2="6" y2="16"/><line x1="24" y1="26" x2="42" y2="16"/><text x="24" y="20" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">6</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(8)" title="d8"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,24 24,44 6,24"/><polygon points="14,14 34,14 24,34"/><text x="24" y="24" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(10)" title="d10"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,20 24,44 6,20"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(12)" title="d12"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 36,8 43,19 43,31 36,42 24,46 12,42 5,31 5,19 12,8"/><polygon points="24,16 34,23 30,34 18,34 14,23"/><text x="24" y="28" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">12</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(20)" title="d20"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,14 42,34 24,44 6,34 6,14"/><polygon points="24,16 34,32 14,32"/><line x1="24" y1="4" x2="24" y2="16"/><line x1="6" y1="14" x2="24" y2="16"/><line x1="6" y1="14" x2="14" y2="32"/><line x1="6" y1="34" x2="14" y2="32"/><line x1="24" y1="44" x2="14" y2="32"/><line x1="24" y1="44" x2="34" y2="32"/><line x1="42" y1="34" x2="34" y2="32"/><line x1="42" y1="14" x2="34" y2="32"/><line x1="42" y1="14" x2="24" y2="16"/><text x="24" y="29" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">20</text></svg></button>
+      <button class="dice-icon-btn" onclick="rollDice(100)" title="d100"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-5,-3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g><g transform="translate(5,3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20" fill="rgba(5,3,15,0.8)"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g></svg></button>
+    </div>
+    <div class="dice-controls-row">
+      <div class="dice-formula-wrapper">
+        <input type="text" id="diceFormulaInput" class="dice-formula-input" placeholder="Ej. 2d20 + 5" value="1d20" onkeypress="if(event.key==='Enter') rollFormula()">
+      </div>
+      <button class="dice-roll-btn" onclick="rollFormula()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="15.5" r="1.5"/><circle cx="15.5" cy="8.5" r="1.5"/><circle cx="8.5" cy="15.5" r="1.5"/></svg>Lanzar</button>
+      <button class="dice-clear-btn" onclick="clearFormula()">Limpiar</button>
+      <div class="roll-result-display" id="rollResult">--</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE PERSONAJE ===== -->
+<div class="page" id="page-personaje">
+  <div class="resources-jumpbar">
+    <button onclick="document.getElementById('page-personaje').scrollIntoView({behavior:'smooth',block:'start'})">Personajes</button>
+    <button onclick="document.getElementById('page-enemigos').scrollIntoView({behavior:'smooth',block:'start'})">Enemigos</button>
+    <button onclick="document.getElementById('page-npc').scrollIntoView({behavior:'smooth',block:'start'})">NPC</button>
+  </div>
+  <div class="char-page-layout">
+    <div class="char-selector-bar">
+      <div class="char-selector-header"><span>Personajes</span><button id="btnAddChar" onclick="openCharModal()" title="Añadir">＋</button></div>
+      <div class="char-list-scroll" id="charListPersonaje"></div>
+    </div>
+    <div class="char-detail">
+      <div class="char-portrait-area" id="portraitArea">
+        <input type="file" id="portraitFileInput" accept="image/*" onchange="onPortraitChange(event)">
+        <button class="portrait-upload-btn" onclick="document.getElementById('portraitFileInput').click()">📷 Cambiar</button>
+        <button class="portrait-token-btn" id="portraitMapTokenBtn" onclick="toggleActiveCharacterMapToken()">📍 Poner token</button>
+        <div id="portraitContent" style="width:100%;height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden;"></div>
+        <div class="portrait-name-bar">
+          <h1 id="portraitName">–</h1>
+          <p id="portraitSub">–</p>
+          <div class="portrait-hp-row">
+            <button class="portrait-hp-btn" onclick="modifyHP(-1)">−</button>
+            <div class="portrait-hp-bar"><div class="portrait-hp-fill" id="portraitHpFill"></div></div>
+            <div class="portrait-hp-text" id="portraitHpText">0 / 0</div>
+            <button class="portrait-hp-btn" onclick="modifyHP(1)">+</button>
+          </div>
+          <div class="portrait-hp-adjust">
+            <input id="hpChangeAmount" type="number" min="1" value="1" title="Cantidad de vida">
+            <button onclick="modifyHP(-1)">Restar vida</button>
+            <button onclick="modifyHP(1)">Sumar vida</button>
+          </div>
+        </div>
+      </div>
+      <div class="char-stats-panel">
+        <div class="stats-inner">
+          <div class="character-sheet-actions" id="characterSheetActions"></div>
+          <div class="section-title">Atributos</div>
+          <div class="attr-grid" id="pgAttrGrid"></div>
+          <div class="section-title">Visión y niebla</div>
+          <div id="pgVisionSettings"></div>
+          <div class="section-title">Habilidades</div>
+          <div id="pgSkillList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE INVENTARIO ===== -->
+<div class="page" id="page-inventario">
+  <div class="inventory-jumpbar">
+    <button onclick="document.getElementById('page-inventario').scrollIntoView({behavior:'smooth',block:'start'})">Inventario</button>
+    <button onclick="document.getElementById('page-hechizos').scrollIntoView({behavior:'smooth',block:'start'})">Hechizos</button>
+    <button onclick="document.getElementById('page-ataque').scrollIntoView({behavior:'smooth',block:'start'})">Ataques</button>
+  </div>
+  <div class="inv-page-layout">
+    <div class="inv-portrait-area" id="invPortraitArea">
+      <div id="invPortraitContent" style="width:100%;height:100%;position:relative;"></div>
+      <div class="inv-portrait-overlay">
+        <div class="inv-portrait-name" id="invPortraitName">–</div>
+        <div class="inv-portrait-sub" id="invPortraitSub">–</div>
+        <div class="inv-gold">
+          <span style="font-size:1.3rem;">💰</span>
+          <div class="inv-gold-info"><div class="inv-gold-text" id="invGoldAmt">0</div><div class="inv-gold-label">Monedas de oro</div></div>
+          <div class="inv-gold-controls" id="invGoldControls" style="display:none;">
+            <input id="goldChangeAmount" type="number" min="1" value="1" title="Cantidad de oro">
+            <button onclick="changeCharacterGold(1)" title="Sumar oro">＋</button>
+            <button onclick="changeCharacterGold(-1)" title="Restar oro">−</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="inv-items-panel">
+      <div class="inv-items-inner">
+        <div class="inv-section-header">
+          <div class="sec-sub" style="margin:0;">Equipamiento</div>
+          <button class="btn-dm-add" id="btnAddItem" onclick="openAddItemModal()" style="display:none;">＋ Añadir Objeto</button>
+        </div>
+        <div id="pgInventoryList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE HECHIZOS ===== -->
+<div class="page" id="page-hechizos">
+  <div class="spell-page-layout">
+    <div class="spell-portrait-area" id="spellPortraitArea">
+      <div id="spellPortraitContent" style="width:100%;height:100%;position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+      <div class="spell-portrait-overlay">
+        <div class="spell-portrait-name" id="spellPortraitName">–</div>
+        <div class="spell-portrait-sub" id="spellPortraitSub">–</div>
+        <div style="margin-top:10px;font-size:0.74rem;font-weight:700;color:rgba(168,85,247,0.6);text-transform:uppercase;letter-spacing:1px;">Espacios de Conjuro</div>
+        <div class="spell-slot-display" id="spellSlotDisplay"></div>
+      </div>
+    </div>
+    <div class="spellbook-panel" id="spellbookPanel">
+      <div class="spellbook-cover">
+        <div class="spellbook-cover-left"><h2>📖 Grimorio</h2><p id="spellbookOwner">– Conjuros Preparados –</p></div>
+        <button class="btn-dm-add" id="btnAddSpell" onclick="openAddSpellModal()" style="display:none;">＋ Añadir hechizo</button>
+      </div>
+      <div class="spellbook-inner" id="pgSpellList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE ATAQUE ===== -->
+<div class="page" id="page-ataque">
+  <div class="ataque-page-layout">
+    <div class="ataque-portrait-area" id="ataquePortraitArea">
+      <div id="ataquePortraitContent" style="width:100%;height:100%;position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+      <div class="ataque-portrait-overlay">
+        <div class="ataque-portrait-name" id="ataquePortraitName">–</div>
+        <div class="ataque-portrait-sub" id="ataquePortraitSub">–</div>
+        <div style="margin-top:10px;font-size:0.74rem;font-weight:700;color:rgba(239,68,68,0.6);text-transform:uppercase;letter-spacing:1px;">Estadísticas de Combate</div>
+        <div class="ataque-stat-row" id="ataqueStatRow"></div>
+      </div>
+    </div>
+    <div class="arsenal-panel" id="arsenalPanel">
+      <div class="arsenal-cover">
+        <div class="arsenal-cover-left"><h2>⚔️ Arsenal</h2><p id="arsenalOwner">– Armas Equipadas –</p></div>
+        <button class="btn-dm-add" id="btnAddAttack" onclick="openAddAttackModal()" style="display:none;">＋ Añadir ataque</button>
+      </div>
+      <div class="arsenal-inner" id="pgAttackList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE ENEMIGOS ===== -->
+<div class="page" id="page-enemigos">
+  <div class="enemy-page-layout">
+    <div class="enemy-library-header">
+      <div>
+        <h2>👹 Biblioteca de enemigos</h2>
+        <p>Crea criaturas o importa imágenes desde tu carpeta. Después coloca sus tokens directamente en el tablero.</p>
+      </div>
+      <div class="enemy-import-actions">
+        <input type="file" id="enemyFilesInput" accept="image/*" multiple onchange="importEnemyFiles(event)" style="display:none;">
+        <input type="file" id="enemyFolderInput" accept="image/*" multiple webkitdirectory directory onchange="importEnemyFiles(event)" style="display:none;">
+        <button class="btn-secondary" onclick="document.getElementById('enemyFilesInput').click()">🖼 Importar imágenes</button>
+        <button class="btn-secondary" onclick="document.getElementById('enemyFolderInput').click()">📁 Importar carpeta</button>
+      </div>
+    </div>
+    <div class="enemy-create-panel glass">
+      <div class="form-group"><label>Nombre del enemigo</label><input id="newEnemyName" type="text" placeholder="Ej. Dragón rojo"></div>
+      <div class="form-group"><label>Puntos de vida</label><input id="newEnemyHp" type="number" min="1" value="20"></div>
+      <div class="form-group"><label>Clase de armadura</label><input id="newEnemyAc" type="number" min="0" value="12"></div>
+      <div class="form-group"><label>Iniciativa</label><input id="newEnemyInit" type="number" value="10"></div>
+      <div class="form-group"><label>Puntos de experiencia</label><input id="newEnemyXp" type="number" min="0" value="100"></div>
+      <div class="form-group"><label>Imagen para el token</label><input id="newEnemyImage" type="file" accept="image/*"></div>
+      <div class="enemy-create-stats">
+        <div class="form-group"><label>FUE</label><input id="newEnemyStr" type="number" value="10"></div>
+        <div class="form-group"><label>DES</label><input id="newEnemyDex" type="number" value="10"></div>
+        <div class="form-group"><label>CON</label><input id="newEnemyCon" type="number" value="10"></div>
+        <div class="form-group"><label>INT</label><input id="newEnemyInt" type="number" value="10"></div>
+        <div class="form-group"><label>SAB</label><input id="newEnemyWis" type="number" value="10"></div>
+        <div class="form-group"><label>CAR</label><input id="newEnemyCha" type="number" value="10"></div>
+      </div>
+      <div class="enemy-create-actions">
+        <button class="btn-primary" id="enemySaveButton" onclick="addEnemyFromForm()">＋ Crear enemigo</button>
+        <button class="btn-secondary" id="enemyCancelEditButton" onclick="resetEnemyForm()" style="display:none;">Cancelar edición</button>
+      </div>
+    </div>
+    <div class="enemy-library-grid" id="enemyLibraryGrid"></div>
+  </div>
+</div>
+
+<!-- ===== PAGE NPC ===== -->
+<div class="page" id="page-npc">
+  <div class="enemy-page-layout npc-page-layout">
+    <div class="enemy-library-header">
+      <div>
+        <h2>🎭 Biblioteca de NPC</h2>
+        <p>Crea aliados, comerciantes o personajes de historia. Después coloca sus tokens directamente en el tablero.</p>
+      </div>
+      <div class="enemy-import-actions">
+        <input type="file" id="npcFilesInput" accept="image/*" multiple onchange="importNpcFiles(event)" style="display:none;">
+        <input type="file" id="npcFolderInput" accept="image/*" multiple webkitdirectory directory onchange="importNpcFiles(event)" style="display:none;">
+        <button class="btn-secondary" onclick="document.getElementById('npcFilesInput').click()">🖼 Importar imágenes</button>
+        <button class="btn-secondary" onclick="document.getElementById('npcFolderInput').click()">📁 Importar carpeta</button>
+      </div>
+    </div>
+    <div class="enemy-create-panel glass npc-create-panel">
+      <div class="form-group"><label>Nombre del NPC</label><input id="newNpcName" type="text" placeholder="Ej. Tabernero Aldren"></div>
+      <div class="form-group"><label>Puntos de vida</label><input id="newNpcHp" type="number" min="1" value="10"></div>
+      <div class="form-group"><label>Clase de armadura</label><input id="newNpcAc" type="number" min="0" value="10"></div>
+      <div class="form-group"><label>Iniciativa</label><input id="newNpcInit" type="number" value="0"></div>
+      <div class="form-group"><label>Rol narrativo</label><input id="newNpcRole" type="text" placeholder="Ej. Comerciante"></div>
+      <div class="form-group"><label>Imagen para el token</label><input id="newNpcImage" type="file" accept="image/*"></div>
+      <div class="enemy-create-stats">
+        <div class="form-group"><label>FUE</label><input id="newNpcStr" type="number" value="10"></div>
+        <div class="form-group"><label>DES</label><input id="newNpcDex" type="number" value="10"></div>
+        <div class="form-group"><label>CON</label><input id="newNpcCon" type="number" value="10"></div>
+        <div class="form-group"><label>INT</label><input id="newNpcInt" type="number" value="10"></div>
+        <div class="form-group"><label>SAB</label><input id="newNpcWis" type="number" value="10"></div>
+        <div class="form-group"><label>CAR</label><input id="newNpcCha" type="number" value="10"></div>
+      </div>
+      <div class="enemy-create-actions">
+        <button class="btn-primary" id="npcSaveButton" onclick="addNpcFromForm()">＋ Crear NPC</button>
+        <button class="btn-secondary" id="npcCancelEditButton" onclick="resetNpcForm()" style="display:none;">Cancelar edición</button>
+      </div>
+    </div>
+    <div class="enemy-library-grid" id="npcLibraryGrid"></div>
+  </div>
+</div>
+
+<!-- ===== PAGE MANUAL ===== -->
+<div class="page" id="page-manual">
+  <div class="manual-page-layout">
+    <aside class="manual-library-sidebar">
+      <div class="manual-sidebar-header">
+        <h2>📚 Manuales</h2>
+        <p>Reglas, notas y documentos de campaña.</p>
+      </div>
+      <input type="file" id="manualFilesInput" accept=".txt,.md,.json,.pdf,text/plain,text/markdown,application/pdf" multiple onchange="importManualFiles(event)" style="display:none;">
+      <button class="btn-primary" onclick="createManual()">＋ Nuevo manual</button>
+      <button class="btn-secondary" onclick="document.getElementById('manualFilesInput').click()">📂 Importar archivo</button>
+      <div class="manual-list" id="manualList"></div>
+    </aside>
+    <section class="manual-editor-panel">
+      <div id="manualEmptyState" class="manual-empty-state">Selecciona un manual o crea uno nuevo para comenzar.</div>
+      <div id="manualEditor" style="display:none;">
+        <div class="manual-editor-header">
+          <input type="text" id="manualTitle" placeholder="Título del manual">
+          <div class="manual-editor-actions">
+            <button class="btn-secondary" id="manualOpenFileButton" onclick="openActiveManualFile()" style="display:none;">↗ Abrir archivo</button>
+            <button class="btn-secondary" onclick="applyActiveManualAdaptation()">✨ Adaptar tablero</button>
+            <button class="btn-primary" onclick="saveActiveManual()">Guardar cambios</button>
+            <button class="btn-danger" onclick="deleteActiveManual()">Eliminar</button>
+          </div>
+        </div>
+        <textarea id="manualContent" placeholder="Escribe reglas personalizadas, notas de campaña, tablas, criaturas o modificaciones para tu tablero..."></textarea>
+        <div class="manual-adaptation-summary" id="manualAdaptationSummary"></div>
+        <div class="manual-editor-hint">Los PDF se conservan como adjuntos. Para personalizar con precisión usa líneas como: @tema: bosque · @campaña: La Cripta · @clima: niebla · @música: misterio.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ===== PAGE PARTIDA ===== -->
+<div class="page" id="page-partida">
+  <div class="partida-layout">
+    <div class="partida-section">
+      <h2>✨ Nueva Campaña</h2>
+      <p style="color:var(--text-3); margin-bottom:16px;">Borra todos los personajes, mapas e inventarios actuales para iniciar una nueva historia. Las cuentas de usuario se mantendrán.</p>
+      <button class="btn-danger" onclick="createNewGame()">☠️ Iniciar Nueva Partida</button>
+    </div>
+    <div class="partida-section">
+      <h2>💾 Guardar Estado Actual</h2>
+      <p style="color:var(--text-3); margin-bottom:16px;">Guarda personajes, mapa, tokens, clima, ronda, turno y posición del tablero para continuar exactamente donde terminó la sesión.</p>
+      <div class="partida-row">
+        <input type="text" id="saveGameName" class="partida-input" placeholder="Nombre de la partida (ej. Sesión 4 - La cueva)">
+        <button class="btn-primary" onclick="saveCurrentGame()">Guardar Partida</button>
+      </div>
+    </div>
+    <div class="partida-section">
+      <h2>📂 Cargar Partida</h2>
+      <div class="save-list" id="saveListContainer">
+        <!-- saves go here -->
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end mainApp -->
+
+<!-- ===== MODALS ===== -->
+<!-- Char Create Modal -->
+<div class="modal-overlay" id="charModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="charModalTitle">Crear Personaje</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre</label><input type="text" id="newCharName" placeholder="Ej. Elrond"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Raza</label><input type="text" id="newCharRace" placeholder="Ej. Elfo"></div>
+        <div class="form-group"><label>Clase</label><input type="text" id="newCharClass" placeholder="Ej. Mago"></div>
+        <div class="form-group"><label>Nivel</label><input type="number" id="newCharLevel" value="1" min="1" max="20"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Tipo</label><select id="newCharType"><option value="player">Jugador</option><option value="enemy">Enemigo</option></select></div>
+        <div class="form-group"><label>Iniciativa</label><input type="number" id="newCharInit" value="10"></div>
+        <div class="form-group"><label>HP Máx</label><input type="number" id="newCharHp" value="15"></div>
+      </div>
+      <div class="sec-sub" style="margin-top:8px;">Atributos</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        <div class="form-group" style="margin:0;"><label>FUE</label><input type="number" id="newCharStr" value="10"></div>
+        <div class="form-group" style="margin:0;"><label>DES</label><input type="number" id="newCharDex" value="10"></div>
+        <div class="form-group" style="margin:0;"><label>CON</label><input type="number" id="newCharCon" value="10"></div>
+        <div class="form-group" style="margin:0;"><label>INT</label><input type="number" id="newCharInt" value="10"></div>
+        <div class="form-group" style="margin:0;"><label>SAB</label><input type="number" id="newCharWis" value="10"></div>
+        <div class="form-group" style="margin:0;"><label>CAR</label><input type="number" id="newCharCha" value="10"></div>
+      </div>
+      <div class="sec-sub" style="margin-top:18px;">Visión</div>
+      <div class="form-row">
+        <div class="form-group"><label>Radio de visión</label><select id="newCharVisionRadius"><option value="0">Sin visión</option><option value="3">3 casillas</option><option value="6" selected>6 casillas</option><option value="9">9 casillas</option><option value="12">12 casillas</option><option value="18">18 casillas</option></select></div>
+        <div class="form-group"><label>Ángulo</label><select id="newCharVisionAngle"><option value="360" selected>Completo (360°)</option><option value="180">180°</option><option value="120">120°</option><option value="90">90°</option><option value="60">60°</option></select></div>
+        <div class="form-group"><label>Equipo</label><select id="newCharVisionTeam"><option value="characters" selected>Personajes</option><option value="party">Grupo aventurero</option><option value="scouts">Exploradores</option><option value="none">Sin equipo</option></select></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:0.86rem;margin:10px 0 0;"><input type="checkbox" id="newCharVisionClearsFog" checked style="width:auto;"> Este personaje despeja niebla y usa Field of View</label>
+      <div class="sec-sub" style="margin-top:18px;">Habilidades</div>
+      <p class="form-hint">Agrega las habilidades propias de este personaje. Puedes usar valores positivos o negativos.</p>
+      <div class="character-skill-builder">
+        <div class="character-skill-fields">
+          <input type="text" id="newCharSkillName" placeholder="Ej. Supervivencia, Historia, Sigilo">
+          <input type="number" id="newCharSkillMod" value="0" title="Modificador">
+          <button type="button" class="btn-secondary" onclick="addSkillToCharacterDraft()">＋ Agregar</button>
+        </div>
+        <div id="newCharSkillList" class="character-skill-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
+      <button class="btn-primary" id="charModalSaveBtn" onclick="saveCharacter()">Guardar Personaje</button>
+    </div>
+  </div>
+</div>
+
+<!-- Map List Modal -->
+<div class="modal-overlay" id="mapListModalOverlay">
+  <div class="modal" style="height:85vh;max-width:520px;">
+    <div class="modal-header"><div class="modal-title">Seleccionar Mapa</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="search-bar"><input type="text" id="mapSearchInput" placeholder="Buscar mapa..." onkeyup="filterMapList()"></div>
+    <div class="modal-body" style="padding:0;flex:1;overflow-y:auto;" id="mapListContainer"></div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn-secondary" onclick="closeModals()">Cerrar</button>
+      <button class="btn-primary" id="btnNewMap" onclick="openMapCreateModal()">＋ Nuevo Mapa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Map Create / Edit Modal -->
+<div class="modal-overlay" id="mapCreateModalOverlay">
+  <div class="modal" style="height:88vh;max-width:680px;">
+    <div class="modal-header"><div class="modal-title" id="mapEditorTitle">Nuevo Mapa</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre</label><input type="text" id="newMapName" placeholder="Ej. Taberna El Poni Pisador"></div>
+      <div class="form-group"><label>Autor / Origen</label><input type="text" id="newMapAuthor" value="Mis Mapas"></div>
+      <div class="form-group"><label>Imagen del Mapa</label><input type="file" id="newMapImageFile" accept="image/*" onchange="previewMapImage(event)"><p style="font-size:0.78rem;color:var(--text-3);margin-top:6px;">Si no eliges imagen, se creará un mapa oscuro básico.</p></div>
+      <img id="newMapPreview" alt="Vista previa del mapa" style="display:none;max-width:210px;max-height:150px;object-fit:cover;border:1px solid var(--glass-border);border-radius:8px;margin-bottom:18px;">
+      <div class="section-title" style="margin-top:4px;">Rejilla del mapa</div>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-bottom:12px;">Indica cuántas casillas tiene la imagen. El tablero ajustará la rejilla y centrará el mapa automáticamente.</p>
+      <div class="form-row">
+        <div class="form-group"><label>Ancho en casillas</label><input type="number" id="newMapGridWidth" min="1" max="300" placeholder="Ej. 30"></div>
+        <div class="form-group"><label>Alto en casillas</label><input type="number" id="newMapGridHeight" min="1" max="300" placeholder="Ej. 20"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Tamaño de cada casilla</label><input type="number" id="newMapFeetPerSquare" min="1" max="1000" value="5"></div>
+        <div class="form-group"><label>Unidad</label><select id="newMapDistanceUnit"><option value="pies">pies</option><option value="metros">metros</option></select></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:0.86rem;margin-bottom:12px;"><input type="checkbox" id="newMapHideGrid" style="width:auto;"> Ocultar rejilla al cargar este mapa</label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
+      <button class="btn-primary" onclick="saveMap()">Guardar Mapa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Item Modal (DM) -->
+<div class="modal-overlay" id="addItemModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Añadir Objeto al Inventario</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre del Objeto</label><input type="text" id="newItemName" placeholder="Ej. Espada Rúnica" oninput="suggestItemSticker()"></div>
+      <div class="form-group">
+        <label>Stickers sugeridos / Iconos rápidos</label>
+        <div class="sticker-picker" id="itemStickerPicker"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Icono (emoji)</label><input type="text" id="newItemIcon" placeholder="🗡️" maxlength="4"></div>
+        <div class="form-group"><label>Cantidad</label><input type="number" id="newItemQty" value="1" min="1"></div>
+        <div class="form-group"><label>Destino inicial</label><div class="form-readonly-pill">🎒 Se guarda en mochila</div></div>
+      </div>
+      <div class="form-group">
+        <label>Tipo de objeto</label>
+        <select id="newItemCategory">
+          <option value="weapon">⚔️ Armas</option>
+          <option value="armor">🛡️ Armaduras</option>
+          <option value="bag" selected>🎒 Mochila</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
+      <button class="btn-primary" onclick="saveItemToDM()">Añadir Objeto</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Spell Modal (DM) -->
+<div class="modal-overlay" id="addSpellModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Añadir Hechizo al Grimorio</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre del Hechizo</label><input type="text" id="newSpellName" placeholder="Ej. Bola de Fuego" oninput="suggestSpellSticker()"></div>
+      <div class="form-group">
+        <label>Stickers sugeridos / Iconos rápidos</label>
+        <div class="sticker-picker" id="spellStickerPicker"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Nivel</label><input type="number" id="newSpellLevel" value="1" min="0" max="9"></div>
+        <div class="form-group"><label>Icono (emoji)</label><input type="text" id="newSpellIcon" placeholder="🔥" maxlength="4"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
+      <button class="btn-primary" onclick="saveSpellToDM()">Añadir Hechizo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Attack Modal (DM) -->
+<div class="modal-overlay" id="addAttackModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">⚔️ Añadir Ataque al Arsenal</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre del Ataque</label><input type="text" id="newAttackName" placeholder="Ej. Espada Larga de los Reyes" oninput="suggestAttackSticker()"></div>
+      <div class="form-group">
+        <label>Stickers sugeridos / Tipo de arma</label>
+        <div class="sticker-picker" id="attackStickerPicker"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Icono (emoji)</label><input type="text" id="newAttackIcon" placeholder="⚔️" maxlength="4"></div>
+        <div class="form-group"><label>Tipo</label>
+          <select id="newAttackType">
+            <option value="Espada">🗡️ Espada</option>
+            <option value="Hacha">🪓 Hacha</option>
+            <option value="Maza">🔨 Maza / Mazo</option>
+            <option value="Lanza">🔱 Lanza / Pica</option>
+            <option value="Arco">🏹 Arco</option>
+            <option value="Ballesta">🎯 Ballesta</option>
+            <option value="Puño">👊 Combate sin armas</option>
+            <option value="Magia">🪄 Arma mágica</option>
+            <option value="Otro">⚙️ Otro</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Daño</label><input type="text" id="newAttackDamage" placeholder="1d8+3" maxlength="12"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cancelar</button>
+      <button class="btn-primary" onclick="saveAttackToDM()">⚔️ Añadir Ataque</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/app.js"></script>
+</body>
+</html>
