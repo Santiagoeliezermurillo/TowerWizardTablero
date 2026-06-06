@@ -98,6 +98,7 @@ let maps = loadLS('crq_maps', [
   {id:1,name:'Claro en el bosque',author:'Mapas Nivel20',thumb:'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=100&q=80',image:'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1200&q=80',bg:'#000',rooms:[]},
   {id:4,name:'Cripta en ruinas',author:'Predeterminado',thumb:defaultMapThumb,image:'',bg:'#000',rooms:[{x:100,y:100,w:250,h:250},{x:350,y:175,w:100,h:100},{x:450,y:50,w:300,h:350}]}
 ]);
+let scenes = loadLS('crq_scenes', []);
 const defaultStructureCatalog = [
   {id:'door',icon:'🚪',name:'Puerta'},{id:'chest',icon:'📦',name:'Cofre'},
   {id:'barrel',icon:'🛢️',name:'Barril'},{id:'tree',icon:'🌳',name:'Árbol'},
@@ -178,6 +179,8 @@ function ensureCombatLoadout(c) {
   if(!c) return c;
   if(!Array.isArray(c.attacks)) c.attacks = [];
   if(!Array.isArray(c.inventory)) c.inventory = [];
+  c.copper = Math.max(0, parseInt(c.copper) || 0);
+  c.silver = Math.max(0, parseInt(c.silver) || 0);
   c.gold = Math.max(0, parseInt(c.gold) || 0);
   if(c.type === 'enemy' && !c.spells) c.spells = {slots:[3,2,0,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]};
   return c;
@@ -291,6 +294,9 @@ function saveNpcs() {
 }
 function saveMaps() {
   saveLS('crq_maps', maps);
+}
+function saveScenes() {
+  saveLS('crq_scenes', scenes);
 }
 function saveUsers() { saveLS('crq_users', users); }
 function isDM() { return state.currentUser && state.currentUser.role === 'dm'; }
@@ -421,7 +427,7 @@ function launchApp() {
     }
   });
   // Ocultar controles exclusivos del DM en el mapa
-  ['toolMaps','toolWeather','toolStructures','toolFog','toolFogReveal','toolFogHide','toolFogCoverAll','toolFogRevealAll','toolFogReset','toolWalls','toolWallRemove','toolMusic','tbDivDM','dmInitControls','dmMapShortcuts','mapInitiativePanel','playerAdminTools','quickToolPlayers','sideToolFog','sideToolFogPeek','sideToolExploredFog','quickToolFog','quickToolFogReveal','quickToolFogHide','quickToolFogCoverAll','quickToolFogRevealAll','quickToolFogReset','quickToolWall','quickToolWallRemove'].forEach(id => {
+  ['toolMaps','toolScenes','toolWeather','toolStructures','toolFog','toolFogReveal','toolFogHide','toolFogCoverAll','toolFogRevealAll','toolFogReset','toolWalls','toolWallRemove','toolMusic','tbDivDM','dmInitControls','dmMapShortcuts','mapInitiativePanel','playerAdminTools','quickToolPlayers','sideToolFog','sideToolFogPeek','sideToolExploredFog','quickToolFog','quickToolFogReveal','quickToolFogHide','quickToolFogCoverAll','quickToolFogRevealAll','quickToolFogReset','quickToolWall','quickToolWallRemove'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isAdmin ? '' : 'none';
   });
@@ -437,7 +443,7 @@ function launchApp() {
       if(panel) panel.style.display='none';
     });
     togglePlayerKickPanel(false);
-    ['toolStructures','toolFog','toolFogReveal','toolFogHide','toolFogCoverAll','toolFogRevealAll','toolFogReset','toolWalls','toolWallRemove','toolMusic','sideToolFog','sideToolFogPeek','sideToolExploredFog','quickToolFog','quickToolFogReveal','quickToolFogHide','quickToolFogCoverAll','quickToolFogRevealAll','quickToolFogReset','quickToolWall','quickToolWallRemove'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+    ['toolScenes','toolStructures','toolFog','toolFogReveal','toolFogHide','toolFogCoverAll','toolFogRevealAll','toolFogReset','toolWalls','toolWallRemove','toolMusic','sideToolFog','sideToolFogPeek','sideToolExploredFog','quickToolFog','quickToolFogReveal','quickToolFogHide','quickToolFogCoverAll','quickToolFogRevealAll','quickToolFogReset','quickToolWall','quickToolWallRemove'].forEach(id => document.getElementById(id)?.classList.remove('active'));
     if(['structure','structure-remove','wall','wall-remove','fog-reveal','fog-hide'].includes(state.mapTool)) state.mapTool = 'move';
   }
   if(!isAdmin) {
@@ -452,6 +458,7 @@ function launchApp() {
   renderAll();
   if(manualAdaptation) applyManualAdaptationProfile(manualAdaptation);
   updateChatSenders();
+  updateSessionDockForRole();
 }
 
 function relocateMapControlsBelowDice() {
@@ -461,6 +468,41 @@ function relocateMapControlsBelowDice() {
   if(!mapWrap) return;
   if(toolbar && toolbar.parentElement !== mapWrap) mapWrap.appendChild(toolbar);
   if(quickTools && quickTools.parentElement !== mapWrap) mapWrap.appendChild(quickTools);
+}
+
+let activeSessionTab = 'log';
+function toggleSessionDock(forceOpen) {
+  const panel = document.getElementById('mapSessionPanel');
+  const toggle = document.getElementById('mapSessionToggle');
+  if(!panel) return;
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : panel.style.display === 'none';
+  panel.style.display = shouldOpen ? 'flex' : 'none';
+  if(toggle) {
+    toggle.classList.toggle('open', shouldOpen);
+    toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  }
+  if(shouldOpen) updateSessionDockForRole();
+}
+function setSessionTab(tab) {
+  if(tab === 'initiative' && !isDM()) tab = 'log';
+  activeSessionTab = tab === 'initiative' ? 'initiative' : 'log';
+  const logActive = activeSessionTab === 'log';
+  document.getElementById('sessionTabLog')?.classList.toggle('active', logActive);
+  document.getElementById('sessionTabInitiative')?.classList.toggle('active', !logActive);
+  document.getElementById('sessionContentLog')?.classList.toggle('active', logActive);
+  document.getElementById('sessionContentInitiative')?.classList.toggle('active', !logActive);
+  if(logActive) {
+    const box = document.getElementById('chatBox');
+    if(box) box.scrollTop = box.scrollHeight;
+  } else {
+    renderInitiative();
+  }
+}
+function updateSessionDockForRole() {
+  const initTab = document.getElementById('sessionTabInitiative');
+  if(initTab) initTab.style.display = isDM() ? '' : 'none';
+  if(!isDM() && activeSessionTab === 'initiative') activeSessionTab = 'log';
+  setSessionTab(activeSessionTab);
 }
 
 // ===================================================
@@ -486,19 +528,35 @@ function switchPage(pg) {
     document.getElementById(`page-${pg}`).classList.add('active');
   }
   renderPageContent(pg);
+  updateNavAccessibility();
   if(pg==='mapa') setTimeout(()=>{ resizeCanvas(); drawMap(); }, 50);
 }
 let navTabsReady = false;
+function updateNavAccessibility() {
+  const nav=document.getElementById('mainNavTabs');
+  if(nav) nav.setAttribute('role','tablist');
+  document.querySelectorAll('#mainNavTabs button').forEach(btn => {
+    const selected = btn.dataset.page === state.activePage;
+    btn.setAttribute('role','tab');
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    btn.setAttribute('tabindex', '0');
+    const pageId = btn.dataset.page === 'recursos' ? 'page-personaje' : `page-${btn.dataset.page}`;
+    btn.setAttribute('aria-controls', pageId);
+    btn.classList.toggle('active', selected);
+  });
+  document.querySelectorAll('.page').forEach(page => {
+    page.setAttribute('aria-hidden', page.classList.contains('active') ? 'false' : 'true');
+  });
+}
 function setupNavTabs() {
   if(navTabsReady) return;
   navTabsReady = true;
   document.querySelectorAll('#mainNavTabs button').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('#mainNavTabs button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       switchPage(btn.dataset.page);
     });
   });
+  updateNavAccessibility();
 }
 function renderAll() {
   updateChatSenders();
@@ -805,7 +863,7 @@ function createEnemyRecord(name,hp,initiative,portrait=null,details={}) {
     color:randColor(), initials:initials(name||'Enemigo'), online:true, portrait,
     ac:details.ac??12, xp:details.xp??0,
     attributes:details.attributes||{str:10,dex:10,con:10,int:10,wis:10,cha:10},
-    inventory:[], gold:0, attacks:[], spells:{slots:[3,2,0,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]}
+    inventory:[], copper:0, silver:0, gold:0, attacks:[], spells:{slots:[3,2,0,0,0,0,0,0,0],usedSlots:[0,0,0,0,0,0,0,0,0],prepared:[]}
   };
   enemies.push(enemy);
   combatants=getInitiativeCombatants();
@@ -1513,9 +1571,13 @@ function renderInventarioPage() {
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10rem;font-weight:900;color:${c.color};opacity:0.2;font-family:var(--font-title);">${c.initials}</div>`;
   const nn = document.getElementById('invPortraitName'); if(nn) nn.textContent = c.name;
   const ns = document.getElementById('invPortraitSub');  if(ns) ns.textContent = `Nivel ${Math.max(1, parseInt(c.level) || 1)} · ${c.race} · ${c.class}`;
+  const ca = document.getElementById('invCopperAmt');    if(ca) ca.textContent = c.copper;
+  const sa = document.getElementById('invSilverAmt');    if(sa) sa.textContent = c.silver;
   const ga = document.getElementById('invGoldAmt');      if(ga) ga.textContent = c.gold;
-  const goldControls = document.getElementById('invGoldControls');
-  if(goldControls) goldControls.style.display = canEdit ? 'grid' : 'none';
+  ['Copper','Silver','Gold'].forEach(kind => {
+    const controls = document.getElementById(`inv${kind}Controls`);
+    if(controls) controls.style.display = canEdit ? 'grid' : 'none';
+  });
   const list = document.getElementById('pgInventoryList');
   if(!list) return;
   const grouped = { weapon:[], armor:[], bag:[] };
@@ -1555,15 +1617,19 @@ function renderInventarioPage() {
   if(normalizedInventory) saveLS('crq_chars', characters);
 }
 
-function changeCharacterGold(direction) {
+function changeCharacterCurrency(currency, direction) {
   const c = getActiveChar();
   if(!canEditCharacter(c)) return;
-  const input = document.getElementById('goldChangeAmount');
+  const currencyKey = ['copper','silver','gold'].includes(currency) ? currency : 'gold';
+  const input = document.getElementById(`${currencyKey}ChangeAmount`);
   const amount = Math.max(1, parseInt(input?.value) || 1);
-  c.gold = Math.max(0, (parseInt(c.gold) || 0) + (direction > 0 ? amount : -amount));
+  c[currencyKey] = Math.max(0, (parseInt(c[currencyKey]) || 0) + (direction > 0 ? amount : -amount));
   saveChars();
   renderInventarioPage();
   renderQuickCombatPanel();
+}
+function changeCharacterGold(direction) {
+  changeCharacterCurrency('gold', direction);
 }
 
 function removeItem(charId, idx) {
@@ -3749,7 +3815,7 @@ function saveCharacter() {
     color:tokenColor, initials:initials(name), online:true, portrait:null,
     attributes:attr,
     skills:getCharacterDraftSkills(),
-    inventory:[], gold:0, spells:null, userId, vision
+    inventory:[], copper:0, silver:0, gold:0, spells:null, userId, vision
   };
   if(type==='player') { characters.push(obj); saveChars(); }
   else { enemies.push(obj); saveEnemies(); }
@@ -3852,6 +3918,151 @@ function selectMap(id) {
       exploredFogPolygons: mapState.exploredFogPolygons
     });
   }
+}
+function openSceneListModal() {
+  if(!isDM()) return;
+  const input=document.getElementById('newSceneName');
+  if(input && !input.value.trim()) {
+    const map=maps.find(m=>m.id===state.activeMapId);
+    input.value=map ? map.name : '';
+  }
+  document.getElementById('sceneListModalOverlay').classList.add('active');
+  renderSceneList();
+}
+function captureCurrentSceneData() {
+  storeCurrentMapTokens();
+  storeCurrentMapStructures();
+  storeCurrentMapWalls();
+  storeCurrentMapFog();
+  const map=maps.find(m=>m.id===state.activeMapId);
+  return {
+    mapId: state.activeMapId,
+    mapSnapshot: map ? cloneGameData(map) : null,
+    tokens: cloneGameData(mapState.tokens),
+    structures: cloneGameData(mapState.structures),
+    walls: cloneGameData(mapState.walls),
+    fogOfWar: mapState.fogOfWar,
+    fogStrokes: cloneGameData(mapState.fogStrokes),
+    fogExploredAreas: mapState.fogExploredAreas,
+    exploredFogPolygons: cloneGameData(mapState.exploredFogPolygons),
+    weather: mapState.weather,
+    music: mapState.music,
+    externalMusicUrl: mapState.externalMusicUrl,
+    mapView: getCurrentMapView()
+  };
+}
+function saveCurrentScene() {
+  if(!isDM()) return;
+  const input=document.getElementById('newSceneName');
+  const map=maps.find(m=>m.id===state.activeMapId);
+  const name=(input?.value || '').trim() || `Escena - ${map?.name || 'Mapa'}`;
+  scenes.unshift({
+    id: Date.now(),
+    name,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    data: captureCurrentSceneData()
+  });
+  saveScenes();
+  if(input) input.value='';
+  renderSceneList();
+  addChatMessage('sys','',`🎬 Escena guardada: <b>${escapeHTML(name)}</b>.`);
+}
+function updateScene(id) {
+  if(!isDM()) return;
+  const scene=scenes.find(s=>s.id===id);
+  if(!scene) return;
+  scene.updatedAt=Date.now();
+  scene.data=captureCurrentSceneData();
+  saveScenes();
+  renderSceneList();
+  addChatMessage('sys','',`🎬 Escena actualizada: <b>${escapeHTML(scene.name)}</b>.`);
+}
+function deleteScene(id) {
+  if(!isDM()) return;
+  if(!confirm('¿Borrar esta escena?')) return;
+  scenes=scenes.filter(s=>s.id!==id);
+  saveScenes();
+  renderSceneList();
+}
+function renderSceneList() {
+  const box=document.getElementById('sceneListContainer');
+  if(!box) return;
+  if(!scenes.length) {
+    box.innerHTML='<div class="scene-empty">Todavía no hay escenas. Coloca mapa, tokens y ambiente, luego guarda la escena actual.</div>';
+    return;
+  }
+  box.innerHTML=scenes.map(scene=>{
+    const data=scene.data || {};
+    const map=maps.find(m=>m.id===data.mapId) || data.mapSnapshot || {};
+    const active=data.mapId===state.activeMapId ? 'active' : '';
+    const date=new Date(scene.updatedAt || scene.createdAt || Date.now()).toLocaleString();
+    return `
+      <div class="scene-list-item ${active}">
+        <img src="${map.thumb || map.image || defaultMapThumb}" class="scene-thumb" alt="">
+        <div class="scene-info">
+          <div class="scene-title">${escapeHTML(scene.name)}</div>
+          <div class="scene-meta">${escapeHTML(map.name || 'Mapa')} · ${(data.tokens || []).length} tokens · ${escapeHTML(data.weather || 'sin clima')} · ${escapeHTML(date)}</div>
+        </div>
+        <div class="scene-actions">
+          <button class="btn-primary" onclick="loadScene(${scene.id})">Cargar</button>
+          <button class="btn-secondary" onclick="updateScene(${scene.id})" title="Sobrescribir con el tablero actual">Actualizar</button>
+          <button class="btn-danger" onclick="deleteScene(${scene.id})" title="Borrar escena">×</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+function broadcastSceneState(sceneData) {
+  if (typeof multiplayer !== 'undefined' && multiplayer.isHost()) {
+    multiplayer.broadcast({
+      type: 'map_change',
+      activeMapId: state.activeMapId,
+      mapSnapshot: sceneData.mapSnapshot || null,
+      tokens: mapState.tokens,
+      structures: mapState.structures,
+      walls: mapState.walls,
+      fogOfWar: mapState.fogOfWar,
+      fogStrokes: mapState.fogStrokes,
+      fogExploredAreas: mapState.fogExploredAreas,
+      exploredFogPolygons: mapState.exploredFogPolygons,
+      weather: sceneData.weather,
+      music: sceneData.music,
+      externalMusicUrl: sceneData.externalMusicUrl,
+      mapView: sceneData.mapView
+    });
+  }
+}
+function loadScene(id) {
+  if(!isDM()) return;
+  const scene=scenes.find(s=>s.id===id);
+  if(!scene || !scene.data) return;
+  const data=scene.data;
+  if(data.mapSnapshot && !maps.some(m=>m.id===data.mapId)) {
+    maps.push(cloneGameData(data.mapSnapshot));
+  }
+  const activeMap=maps.find(m=>m.id===data.mapId);
+  if(!activeMap) {
+    addChatMessage('sys','','No se pudo cargar la escena: falta el mapa original.');
+    return;
+  }
+  state.activeMapId=data.mapId;
+  activeMap.tokens=cloneGameData(data.tokens || []);
+  activeMap.structures=cloneGameData(data.structures || []);
+  activeMap.walls=cloneGameData(data.walls || []);
+  activeMap.fogOfWar=data.fogOfWar === true;
+  activeMap.fogStrokes=cloneGameData(data.fogStrokes || []);
+  activeMap.fogExploredAreas=data.fogExploredAreas === true;
+  activeMap.exploredFogPolygons=cloneGameData(data.exploredFogPolygons || []);
+  saveMaps();
+  saveLS('crq_active_map_id', state.activeMapId);
+  loadActiveMap(data.mapView || null);
+  setWeather(data.weather || 'none', true);
+  if(data.externalMusicUrl) playExternalMusic(data.externalMusicUrl,true);
+  else setMusic(data.music || 'none', true);
+  closeModals();
+  renderSceneList();
+  addChatMessage('sys','',`🎬 Escena cargada: <b>${escapeHTML(scene.name)}</b>.`);
+  broadcastSceneState(data);
 }
 function saveMap() {
   if(!isDM()) return;
@@ -4213,11 +4424,12 @@ function rollFormula() {
   if(!parsed||(parsed.rolls.length===0&&parsed.modifier===0)) { addChatMessage('sys','',`Fórmula inválida: <b>${formula}</b>`); return; }
   let total=parsed.modifier; const details=[]; let hasCrit=false,hasFumble=false,primaryFaces=20,totalDiceCount=0;
   const allRolls=[];
+  const diceVisuals=[];
   parsed.rolls.forEach(group=>{
     const groupRolls=[];
     for(let i=0;i<group.count;i++){
       const r=Math.floor(Math.random()*group.faces)+1;
-      groupRolls.push(r); allRolls.push(r); total+=r*group.sign;
+      groupRolls.push(r); allRolls.push(r); diceVisuals.push({value:r,faces:group.faces}); total+=r*group.sign;
       if(group.faces===20){ if(r===20)hasCrit=true; if(r===1)hasFumble=true; }
     }
     totalDiceCount+=group.count; primaryFaces=group.faces;
@@ -4235,6 +4447,7 @@ function rollFormula() {
       total,
       primaryFaces,
       allRolls,
+      diceVisuals,
       formula,
       detailStr,
       hasCrit,
@@ -4250,7 +4463,7 @@ function rollFormula() {
       if(hasCrit)el.classList.add('crit'); if(hasFumble)el.classList.add('fumble');
     }
     sendFormulaRollToChat(formula,detailStr,total,hasCrit,hasFumble,senderName);
-  },allRolls);
+  },allRolls,diceVisuals);
 }
 function sendFormulaRollToChat(formula,details,total,hasCrit,hasFumble,senderName) {
   const sel=document.getElementById('chatSender');
@@ -4271,6 +4484,28 @@ function sendFormulaRollToChat(formula,details,total,hasCrit,hasFumble,senderNam
     </div>`);
   document.getElementById('chatBox').scrollTop=99999;
 }
+function addSkillRollToChat(data) {
+  let extra=data.hasCrit?'<div class="roll-total crit">Â¡CRÃTICO!</div>':(data.hasFumble?'<div class="roll-total fumble">Â¡PIFIA!</div>':'');
+  document.getElementById('chatBox').insertAdjacentHTML('beforeend',`
+    <div class="chat-msg msg-roll">
+      <div class="msg-sender">${escapeHTML(data.senderName)}</div>
+      <b>${escapeHTML(data.formula)}</b>
+      <div class="roll-details">${escapeHTML(data.detailStr)}</div>
+      <div class="roll-total ${data.hasCrit?'crit':data.hasFumble?'fumble':''}">${data.total}</div>${extra}
+    </div>`);
+  document.getElementById('chatBox').scrollTop=99999;
+}
+function addDiceRollToChat(data) {
+  if(!data) return;
+  if (String(data.formula || '').startsWith('Tirada de')) {
+    addSkillRollToChat(data);
+  } else {
+    sendFormulaRollToChat(data.formula, data.detailStr, data.total, data.hasCrit, data.hasFumble, data.senderName);
+  }
+}
+function shouldAnimateRemoteDiceRolls() {
+  return false;
+}
 function normalizeDiceRollData(data, senderName = data?.senderName) {
   const total = Number(data?.total);
   const primaryFaces = Number(data?.primaryFaces);
@@ -4278,8 +4513,13 @@ function normalizeDiceRollData(data, senderName = data?.senderName) {
   const allRolls = Array.isArray(data.allRolls)
     ? data.allRolls.map(Number).filter(Number.isFinite).slice(0,100)
     : [];
+  const diceVisuals = Array.isArray(data.diceVisuals)
+    ? data.diceVisuals.map(d=>({value:Number(d?.value),faces:Number(d?.faces)}))
+        .filter(d=>Number.isFinite(d.value) && Number.isFinite(d.faces) && d.faces >= 2)
+        .slice(0,100)
+    : [];
   return {
-    type:'dice_roll', total, primaryFaces, allRolls,
+    type:'dice_roll', total, primaryFaces, allRolls, diceVisuals,
     formula:String(data.formula ?? '').slice(0,120),
     detailStr:String(data.detailStr ?? '').slice(0,300),
     hasCrit:!!data.hasCrit, hasFumble:!!data.hasFumble,
@@ -4295,6 +4535,7 @@ function rollSkill(charName,skillName,mod) {
       total: total,
       primaryFaces: 20,
       allRolls: [roll],
+      diceVisuals: [{value:roll,faces:20}],
       formula: `Tirada de ${skillName}`,
       detailStr: `1d20(${roll}) ${fmtMod(mod)}`,
       hasCrit: roll===20,
@@ -4314,7 +4555,7 @@ function rollSkill(charName,skillName,mod) {
         <div class="roll-total ${roll===20?'crit':roll===1?'fumble':''}">${total}</div>${extra}
       </div>`);
     document.getElementById('chatBox').scrollTop=99999;
-  },[roll]);
+  },[roll],[{value:roll,faces:20}]);
 }
 function showRollResult(total,raw,faces) {
   const el=document.getElementById('rollResult'); el.className='roll-result-display';
@@ -4323,7 +4564,23 @@ function showRollResult(total,raw,faces) {
   if(faces===20&&raw===1)el.classList.add('fumble');
   el.style.transform='scale(1.25)'; setTimeout(()=>el.style.transform='scale(1)',150);
 }
-function animate3DDice(result,faces,callback,individualRolls=[]) {
+function getVisualDiceFaces(faces) {
+  const allowed = [4,6,8,10,12,20,100];
+  const numericFaces = Number(faces);
+  if(numericFaces === 100) return 100;
+  return allowed.includes(numericFaces) ? numericFaces : 6;
+}
+function getDiceFaceCount(faces) {
+  const visualFaces = getVisualDiceFaces(faces);
+  return visualFaces === 100 ? 10 : visualFaces;
+}
+function createDiceFacesHTML(value, faces) {
+  const faceCount = getDiceFaceCount(faces);
+  const values = [value];
+  for(let i=1;i<faceCount;i++) values.push(((i - 1) % faceCount) + 1);
+  return values.map(v=>`<div class="face-3d">${v}</div>`).join('');
+}
+function animate3DDice(result,faces,callback,individualRolls=[],diceVisuals=null) {
   const overlay=document.getElementById('dice3DOverlay');
   const container=document.getElementById('dice3DContainer');
   if(!container) return callback();
@@ -4331,30 +4588,21 @@ function animate3DDice(result,faces,callback,individualRolls=[]) {
   container.innerHTML = '';
   
   // Todos los dados serán cubos (6 caras)
-  const numFaces = 6;
-  
   // Display up to 10 dice dynamically based on the roll formula
-  const rollsToShow = individualRolls.length > 0 ? individualRolls.slice(0, 10) : [result];
+  const diceToShow = Array.isArray(diceVisuals) && diceVisuals.length
+    ? diceVisuals.slice(0, 10).map(d=>({ value:Number(d.value), faces:Number(d.faces) }))
+    : (individualRolls.length > 0 ? individualRolls.slice(0, 10).map(value=>({ value, faces })) : [{value:result, faces}]);
   
-  rollsToShow.forEach((val, idx) => {
+  diceToShow.forEach((die, idx) => {
     const rollClass = (idx % 2 === 0) ? 'rolling-1' : 'rolling-2';
     
     // Determine the values to show on the other 5 faces so the die looks realistic
-    const d6Values = [1, 2, 3, 4, 5, 6];
-    let otherValues = d6Values.filter(v => v !== val);
+    const visualFaces = 6;
+    const facesHTML = createDiceFacesHTML(die.value, visualFaces);
     
     // If the rolled value is outside 1-6 (e.g., from a d20 roll like 18), we show standard d6 numbers on the other faces
-    if (val < 1 || val > 6) {
-      otherValues = [1, 2, 3, 4, 5];
-    }
-    
-    let facesHTML = `<div class="face-3d">${val}</div>`;
-    for (let f = 1; f < 6; f++) {
-      facesHTML += `<div class="face-3d">${otherValues[f - 1]}</div>`;
-    }
-    
     container.insertAdjacentHTML('beforeend', `
-      <div class="scene-3d dice-d6">
+      <div class="scene-3d dice-d${visualFaces}">
         <div class="cube-3d ${rollClass}" id="cube3D-${idx}" style="animation-delay: ${idx * 60}ms">
           ${facesHTML}
         </div>
@@ -4364,7 +4612,7 @@ function animate3DDice(result,faces,callback,individualRolls=[]) {
   
   overlay.classList.add('active');
   
-  const maxDelay = (rollsToShow.length - 1) * 60;
+  const maxDelay = (diceToShow.length - 1) * 60;
   const animTime = 900 + maxDelay;
   
   setTimeout(() => {
@@ -6700,6 +6948,7 @@ function saveCurrentGame() {
       enemies: cloneGameData(enemies),
       npcs: cloneGameData(npcs),
       maps: cloneGameData(maps),
+      scenes: cloneGameData(scenes),
       activeMapId: state.activeMapId,
       activeCharId: state.activeCharId,
       currentTurnIndex: state.currentTurnIndex,
@@ -6733,6 +6982,7 @@ function loadGame(id,skipConfirm=false) {
   enemies = cloneGameData(data.enemies || []);
   npcs = cloneGameData(data.npcs || []);
   maps = cloneGameData(data.maps || []);
+  scenes = cloneGameData(data.scenes || scenes || []);
   state.activeMapId = maps.some(m => m.id === data.activeMapId) ? data.activeMapId : maps[0]?.id;
   state.activeCharId = characters.some(c => c.id === data.activeCharId) ? data.activeCharId : characters[0]?.id;
   state.currentTurnIndex = Number.isInteger(data.currentTurnIndex) ? data.currentTurnIndex : 0;
@@ -6752,6 +7002,7 @@ function loadGame(id,skipConfirm=false) {
   saveLS('crq_enemies', enemies);
   saveLS('crq_npcs', npcs);
   saveLS('crq_maps', maps);
+  saveLS('crq_scenes', scenes);
   saveLS('crq_active_map_id', state.activeMapId);
   saveLS('crq_active_char_id', state.activeCharId);
   combatants = getInitiativeCombatants();
@@ -6793,6 +7044,7 @@ function createNewGame() {
   saveLS('crq_enemies', []);
   saveLS('crq_npcs', []);
   saveLS('crq_maps', [{id:1,name:'Mapa Inicial',author:'Sistema',thumb:'',image:'',bg:'#000',rooms:[],tokens:[],structures:[],walls:[],fogOfWar:false,fogStrokes:[],fogExploredAreas:false,exploredFogPolygons:[]}]);
+  saveLS('crq_scenes', []);
   saveLS('crq_active_map_id', 1);
   localStorage.removeItem('crq_active_char_id');
   window.location.reload();
@@ -7178,7 +7430,8 @@ function handleHostIncomingData(conn, data) {
     const ownedCharacter = clientUser && characters.find(c => c.userId === clientUser.id);
     data = normalizeDiceRollData(data, ownedCharacter?.name || clientUser?.username);
     if(!clientUser || !data) return;
-    animate3DDice(data.total, data.primaryFaces, () => {
+    addDiceRollToChat(data);
+    if(shouldAnimateRemoteDiceRolls()) animate3DDice(data.total, data.primaryFaces, () => {
       showRollResult(data.total, data.total, data.primaryFaces);
       if (data.formula.startsWith('Tirada de')) {
         let extra=data.hasCrit?'<div class="roll-total crit">¡CRÍTICO!</div>':(data.hasFumble?'<div class="roll-total fumble">¡PIFIA!</div>':'');
@@ -7491,6 +7744,9 @@ function handleClientIncomingData(data) {
     if(typeof drawMap === 'function') drawMap();
   }
   else if (data.type === 'map_change') {
+    if(data.mapSnapshot && !maps.some(m=>m.id===data.activeMapId)) {
+      maps.push(cloneGameData(data.mapSnapshot));
+    }
     state.activeMapId = data.activeMapId;
     mapState.tokens = data.tokens;
     mapState.structures = Array.isArray(data.structures) ? data.structures : [];
@@ -7511,7 +7767,10 @@ function handleClientIncomingData(data) {
       saveMaps();
     }
     saveLS('crq_active_map_id', state.activeMapId);
-    loadActiveMap();
+    loadActiveMap(data.mapView || null);
+    if(typeof data.weather === 'string') setWeather(data.weather || 'none', true);
+    if(data.externalMusicUrl) playExternalMusic(data.externalMusicUrl,true);
+    else if(typeof data.music === 'string') setMusic(data.music || 'none', true);
     drawMap();
   }
   else if (data.type === 'tokens_update') {
@@ -7531,7 +7790,8 @@ function handleClientIncomingData(data) {
   else if (data.type === 'dice_roll') {
     data = normalizeDiceRollData(data);
     if(!data) return;
-    animate3DDice(data.total, data.primaryFaces, () => {
+    addDiceRollToChat(data);
+    if(shouldAnimateRemoteDiceRolls()) animate3DDice(data.total, data.primaryFaces, () => {
       showRollResult(data.total, data.total, data.primaryFaces);
       if (data.formula.startsWith('Tirada de')) {
         let extra=data.hasCrit?'<div class="roll-total crit">¡CRÍTICO!</div>':(data.hasFumble?'<div class="roll-total fumble">¡PIFIA!</div>':'');

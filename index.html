@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TW — Virtual Tabletop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="assets/css/styles.css">
 </head>
 <body>
+<a class="skip-link" href="#mainApp">Saltar al tablero</a>
 
 <!-- 3D Dice Overlay -->
 <div id="dice3DOverlay">
@@ -134,7 +135,7 @@
 </div>
 
 <!-- MAIN APP -->
-<div id="mainApp" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+<div id="mainApp" tabindex="-1" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
 
 <header>
   <div class="logo"><span class="logo-gem">🔮</span>TW</div>
@@ -206,6 +207,7 @@
       </div>
       <div class="map-toolbar">
         <button id="toolMaps" onclick="openMapListModal()">📂 Mapas</button>
+        <button id="toolScenes" onclick="openSceneListModal()">🎬 Escenas</button>
         <div class="tb-div" id="tbDivDM"></div>
         <button id="toolWeather" onclick="toggleWeatherPanel()">☁️ Climático</button>
         <button id="toolStructures" onclick="toggleStructuresPanel()">🏰 Estructuras</button>
@@ -326,6 +328,16 @@
         <button id="music-none" onclick="setMusic('none')" class="weather-opt weather-stop">⏹ Detener música</button>
       </div>
     </div>
+    <div class="map-session-dock" id="mapSessionDock">
+      <button class="map-session-toggle" id="mapSessionToggle" onclick="toggleSessionDock()" aria-expanded="false">
+        Registro / Iniciativa
+      </button>
+      <div class="map-session-panel glass" id="mapSessionPanel" style="display:none;">
+        <div class="map-session-tabs">
+          <button id="sessionTabLog" class="active" onclick="setSessionTab('log')">Registro</button>
+          <button id="sessionTabInitiative" onclick="setSessionTab('initiative')">Iniciativa</button>
+        </div>
+        <div class="map-session-content" id="sessionContentInitiative">
     <!-- Initiative -->
     <div class="map-side-panel" id="mapInitiativePanel">
       <div class="side-header"><span>Iniciativa</span>
@@ -339,10 +351,12 @@
       <div class="round-counter">Ronda <span id="roundCount">1</span></div>
       <div class="initiative-list" id="initiativeList"></div>
     </div>
+        </div>
+        <div class="map-session-content active" id="sessionContentLog">
     <!-- Chat -->
     <div class="map-chat-panel">
       <div class="side-header">Registro</div>
-      <div class="chat-messages" id="chatBox">
+      <div class="chat-messages" id="chatBox" aria-live="polite" aria-label="Registro de partida">
         <div class="chat-msg msg-sys">⚔️ ¡Bienvenidos a la campaña! Que los dados sean favorables.</div>
       </div>
       <div class="chat-input-area">
@@ -350,6 +364,9 @@
         <div class="chat-input-row">
           <input type="text" id="chatInputMsg" placeholder="Habla o narra..." onkeypress="if(event.key==='Enter') sendChatMessage()">
           <button onclick="sendChatMessage()">Enviar</button>
+        </div>
+      </div>
+    </div>
         </div>
       </div>
     </div>
@@ -438,13 +455,33 @@
       <div class="inv-portrait-overlay">
         <div class="inv-portrait-name" id="invPortraitName">–</div>
         <div class="inv-portrait-sub" id="invPortraitSub">–</div>
-        <div class="inv-gold">
-          <span style="font-size:1.3rem;">💰</span>
-          <div class="inv-gold-info"><div class="inv-gold-text" id="invGoldAmt">0</div><div class="inv-gold-label">Monedas de oro</div></div>
-          <div class="inv-gold-controls" id="invGoldControls" style="display:none;">
-            <input id="goldChangeAmount" type="number" min="1" value="1" title="Cantidad de oro">
-            <button onclick="changeCharacterGold(1)" title="Sumar oro">＋</button>
-            <button onclick="changeCharacterGold(-1)" title="Restar oro">−</button>
+        <div class="currency-stack">
+          <div class="inv-gold currency-copper">
+            <span style="font-size:1.3rem;">🪙</span>
+            <div class="inv-gold-info"><div class="inv-gold-text" id="invCopperAmt">0</div><div class="inv-gold-label">Monedas de cobre</div></div>
+            <div class="inv-gold-controls currency-controls" id="invCopperControls" style="display:none;">
+              <input id="copperChangeAmount" type="number" min="1" value="1" title="Cantidad de cobre">
+              <button onclick="changeCharacterCurrency('copper',1)" title="Sumar cobre">＋</button>
+              <button onclick="changeCharacterCurrency('copper',-1)" title="Restar cobre">−</button>
+            </div>
+          </div>
+          <div class="inv-gold currency-silver">
+            <span style="font-size:1.3rem;">⚪</span>
+            <div class="inv-gold-info"><div class="inv-gold-text" id="invSilverAmt">0</div><div class="inv-gold-label">Monedas de plata</div></div>
+            <div class="inv-gold-controls currency-controls" id="invSilverControls" style="display:none;">
+              <input id="silverChangeAmount" type="number" min="1" value="1" title="Cantidad de plata">
+              <button onclick="changeCharacterCurrency('silver',1)" title="Sumar plata">＋</button>
+              <button onclick="changeCharacterCurrency('silver',-1)" title="Restar plata">−</button>
+            </div>
+          </div>
+          <div class="inv-gold currency-gold">
+            <span style="font-size:1.3rem;">💰</span>
+            <div class="inv-gold-info"><div class="inv-gold-text" id="invGoldAmt">0</div><div class="inv-gold-label">Monedas de oro</div></div>
+            <div class="inv-gold-controls currency-controls" id="invGoldControls" style="display:none;">
+              <input id="goldChangeAmount" type="number" min="1" value="1" title="Cantidad de oro">
+              <button onclick="changeCharacterCurrency('gold',1)" title="Sumar oro">＋</button>
+              <button onclick="changeCharacterCurrency('gold',-1)" title="Restar oro">−</button>
+            </div>
           </div>
         </div>
       </div>
@@ -713,6 +750,24 @@
     <div class="modal-footer" style="justify-content:space-between;">
       <button class="btn-secondary" onclick="closeModals()">Cerrar</button>
       <button class="btn-primary" id="btnNewMap" onclick="openMapCreateModal()">＋ Nuevo Mapa</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scene List Modal -->
+<div class="modal-overlay" id="sceneListModalOverlay">
+  <div class="modal" style="height:85vh;max-width:620px;">
+    <div class="modal-header"><div class="modal-title">Escenas de la historia</div><div class="close-btn" onclick="closeModals()">×</div></div>
+    <div class="modal-body">
+      <p class="scene-help">Guarda el mapa actual con tokens, estructuras, muros, niebla, vista y ambiente para cambiar de momento narrativo en un clic.</p>
+      <div class="scene-create-row">
+        <input type="text" id="newSceneName" placeholder="Ej. Entrada a la cueva, Sala del jefe...">
+        <button class="btn-primary" onclick="saveCurrentScene()">Guardar escena actual</button>
+      </div>
+      <div class="scene-list" id="sceneListContainer"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModals()">Cerrar</button>
     </div>
   </div>
 </div>
