@@ -76,9 +76,6 @@
 
       <!-- DM Library Buttons -->
       <button class="btn-auth btn-auth-secondary" id="btnLoadSavedGameOption" onclick="showLoadSavedGameMode()">📂 Cargar Partida Guardada</button>
-      <button class="btn-auth btn-auth-secondary" id="btnLoadManualOption" onclick="showManualSelectionMode()">📚 Biblioteca de Manuales</button>
-      
-      
       <!-- Solo Game Button -->
       <button class="btn-auth btn-auth-tertiary" onclick="playSolo()">Jugar en Solitario (Local)</button>
     </div>
@@ -100,7 +97,7 @@
           <div style="color:var(--text-dim); font-style:italic; text-align:center; padding:10px 0;">Esperando aventureros...</div>
         </div>
       </div>
-      <button class="btn-auth" id="btnStartHostedGame" style="display:none;" onclick="startHostedGame()">🧙 Iniciar Partida</button>
+      <button class="btn-auth" id="btnStartHostedGame" style="display:none;" onclick="startHostedGame()">🧙 Iniciar Campaña</button>
       <button class="btn-auth btn-auth-secondary" style="margin-top: 10px;" onclick="cancelGameSelection()">Atrás</button>
     </div>
     
@@ -143,13 +140,13 @@
     <button class="active" data-page="mapa"><span class="tab-icon">🗺</span>Mapa</button>
     <button data-page="recursos" id="tabRecursos"><span class="tab-icon">📚</span><span class="tab-label">Recursos</span></button>
     <button data-page="inventario"><span class="tab-icon">🎒</span>Inventario</button>
-    <button data-page="manual" id="tabManual"><span class="tab-icon">📚</span>Manual</button>
     <button data-page="partida" id="tabPartida"><span class="tab-icon">💾</span>Partida</button>
   </div>
   <div class="header-right">
     <div class="game-code-badge" id="headerGameCodeBadge" style="display:none; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); color:var(--gold); padding:6px 12px; border-radius:var(--radius-sm); font-family:var(--font-title); font-size:0.85rem; font-weight:bold; letter-spacing:1px; cursor:pointer; align-items:center; gap:6px;" onclick="copyGameCodeToClipboard()" title="Haz clic para copiar el código de la partida">
       <span>Código:</span> <span id="headerGameCodeVal">-</span>
     </div>
+    <div class="connection-status-badge" id="connectionStatusBadge" style="display:none;">Conectado</div>
     <div class="volume-control" title="Volumen personal: solo cambia el sonido en este dispositivo">
       <button onclick="adjustAppVolume(-0.1)" aria-label="Bajar volumen">−</button>
       <span id="appVolumeLabel">70%</span>
@@ -210,11 +207,8 @@
         <button id="toolScenes" onclick="openSceneListModal()">🎬 Escenas</button>
         <div class="tb-div" id="tbDivDM"></div>
         <button id="toolWeather" onclick="toggleWeatherPanel()">☁️ Climático</button>
-        <button id="toolStructures" onclick="toggleStructuresPanel()">🏰 Estructuras</button>
         <button id="toolMusic" onclick="toggleMusicPanel()">🎵 Música</button>
         <div class="tb-div"></div>
-        
-        
       </div>
       <div class="map-quick-tools" aria-label="Herramientas rápidas del tablero">
         <button id="sideToolFog" onclick="toggleFogOfWar()" title="Activar niebla de guerra" data-tooltip="Activar niebla de guerra: Bloquea la visión de cada participante, que sólo podrá ver a través de la niebla que despejen los personajes de su equipo.">☁</button>
@@ -229,10 +223,6 @@
         <div class="map-tool-divider"></div>
         <button id="quickToolGrid" class="active" onclick="toggleMapGrid()" title="Mostrar u ocultar cuadrícula">▦</button>
         <button onclick="resetMapView()" title="Recentrar vista del tablero">◎</button>
-      </div>
-      <div class="quick-combat-dock" id="quickCombatDock">
-        <button id="quickCombatToggle" class="quick-combat-toggle" onclick="toggleQuickCombatPanel()">Combate</button>
-        <div class="quick-combat-panel glass" id="quickCombatPanel" style="display:none;"></div>
       </div>
       <!-- Weather Selection Panel -->
       <div class="weather-panel glass" id="weatherPanel" style="display:none;width:360px;">
@@ -381,6 +371,10 @@
       <button class="dice-icon-btn" onclick="rollDice(12)" title="d12"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 36,8 43,19 43,31 36,42 24,46 12,42 5,31 5,19 12,8"/><polygon points="24,16 34,23 30,34 18,34 14,23"/><text x="24" y="28" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">12</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(20)" title="d20"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,14 42,34 24,44 6,34 6,14"/><polygon points="24,16 34,32 14,32"/><line x1="24" y1="4" x2="24" y2="16"/><line x1="6" y1="14" x2="24" y2="16"/><line x1="6" y1="14" x2="14" y2="32"/><line x1="6" y1="34" x2="14" y2="32"/><line x1="24" y1="44" x2="14" y2="32"/><line x1="24" y1="44" x2="34" y2="32"/><line x1="42" y1="34" x2="34" y2="32"/><line x1="42" y1="14" x2="34" y2="32"/><line x1="42" y1="14" x2="24" y2="16"/><text x="24" y="29" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">20</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(100)" title="d100"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-5,-3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g><g transform="translate(5,3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20" fill="rgba(5,3,15,0.8)"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g></svg></button>
+      <div class="quick-combat-dock" id="quickCombatDock">
+        <button id="quickCombatToggle" class="quick-combat-toggle" onclick="toggleQuickCombatPanel()">Combate</button>
+        <div class="quick-combat-panel glass" id="quickCombatPanel" style="display:none;"></div>
+      </div>
     </div>
     <div class="dice-controls-row">
       <div class="dice-formula-wrapper">
@@ -396,9 +390,9 @@
 <!-- ===== PAGE PERSONAJE ===== -->
 <div class="page" id="page-personaje">
   <div class="resources-jumpbar">
-    <button onclick="document.getElementById('page-personaje').scrollIntoView({behavior:'smooth',block:'start'})">Personajes</button>
-    <button onclick="document.getElementById('page-enemigos').scrollIntoView({behavior:'smooth',block:'start'})">Enemigos</button>
-    <button onclick="document.getElementById('page-npc').scrollIntoView({behavior:'smooth',block:'start'})">NPC</button>
+    <button class="resource-nav-personajes" onclick="document.getElementById('page-personaje').scrollIntoView({behavior:'smooth',block:'start'})">Personajes</button>
+    <button class="resource-nav-enemigos" onclick="document.getElementById('page-enemigos').scrollIntoView({behavior:'smooth',block:'start'})">Enemigos</button>
+    <button class="resource-nav-npc" onclick="document.getElementById('page-npc').scrollIntoView({behavior:'smooth',block:'start'})">NPC</button>
   </div>
   <div class="char-page-layout">
     <div class="char-selector-bar">
@@ -445,9 +439,9 @@
 <!-- ===== PAGE INVENTARIO ===== -->
 <div class="page" id="page-inventario">
   <div class="inventory-jumpbar">
-    <button onclick="document.getElementById('page-inventario').scrollIntoView({behavior:'smooth',block:'start'})">Inventario</button>
-    <button onclick="document.getElementById('page-hechizos').scrollIntoView({behavior:'smooth',block:'start'})">Hechizos</button>
-    <button onclick="document.getElementById('page-ataque').scrollIntoView({behavior:'smooth',block:'start'})">Ataques</button>
+    <button class="inventory-nav-inventario" onclick="document.getElementById('page-inventario').scrollIntoView({behavior:'smooth',block:'start'})">Inventario</button>
+    <button class="inventory-nav-hechizos" onclick="document.getElementById('page-hechizos').scrollIntoView({behavior:'smooth',block:'start'})">Hechizos</button>
+    <button class="inventory-nav-ataques" onclick="document.getElementById('page-ataque').scrollIntoView({behavior:'smooth',block:'start'})">Ataques</button>
   </div>
   <div class="inv-page-layout">
     <div class="inv-portrait-area" id="invPortraitArea">
@@ -662,6 +656,38 @@
       <button class="btn-danger" onclick="createNewGame()">☠️ Iniciar Nueva Partida</button>
     </div>
     <div class="partida-section">
+      <h2>📨 Invitar Jugadores</h2>
+      <p style="color:var(--text-3); margin-bottom:16px;">Comparte el código de la sala para que otros jugadores puedan unirse a esta misma partida.</p>
+      <div class="partida-invite-card">
+        <div>
+          <div class="partida-invite-label">Código de invitación</div>
+          <div class="partida-invite-code" id="partidaInviteCode">Sin partida activa</div>
+          <div class="partida-invite-hint" id="partidaInviteHint">Crea o inicia una partida multijugador para generar un código.</div>
+        </div>
+        <button class="btn-primary" id="partidaInviteButton" onclick="copyInviteToClipboard()">Copiar invitación</button>
+      </div>
+      <div class="room-access-panel" id="roomAccessPanel">
+        <div class="room-access-column">
+          <div class="partida-invite-label">Solicitudes pendientes</div>
+          <div class="room-access-list" id="roomPendingList">
+            <div class="room-access-empty">No hay jugadores esperando aprobación.</div>
+          </div>
+        </div>
+        <div class="room-access-column">
+          <div class="partida-invite-label">Jugadores dentro de la sala</div>
+          <div class="room-access-list" id="roomConnectedList">
+            <div class="room-access-empty">No hay jugadores conectados.</div>
+          </div>
+        </div>
+        <div class="room-access-column room-access-log-column">
+          <div class="partida-invite-label">Registro de sala</div>
+          <div class="room-access-log" id="roomEventLog">
+            <div class="room-access-empty">Todavía no hay movimientos en la sala.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="partida-section">
       <h2>💾 Guardar Estado Actual</h2>
       <p style="color:var(--text-3); margin-bottom:16px;">Guarda personajes, mapa, tokens, clima, ronda, turno y posición del tablero para continuar exactamente donde terminó la sesión.</p>
       <div class="partida-row">
@@ -774,15 +800,47 @@
 
 <!-- Map Create / Edit Modal -->
 <div class="modal-overlay" id="mapCreateModalOverlay">
-  <div class="modal" style="height:88vh;max-width:680px;">
+  <div class="modal" style="height:88vh;max-width:760px;">
     <div class="modal-header"><div class="modal-title" id="mapEditorTitle">Nuevo Mapa</div><div class="close-btn" onclick="closeModals()">×</div></div>
     <div class="modal-body">
       <div class="form-group"><label>Nombre</label><input type="text" id="newMapName" placeholder="Ej. Taberna El Poni Pisador"></div>
       <div class="form-group"><label>Autor / Origen</label><input type="text" id="newMapAuthor" value="Mis Mapas"></div>
       <div class="form-group"><label>Imagen del Mapa</label><input type="file" id="newMapImageFile" accept="image/*" onchange="previewMapImage(event)"><p style="font-size:0.78rem;color:var(--text-3);margin-top:6px;">Si no eliges imagen, se creará un mapa oscuro básico.</p></div>
       <img id="newMapPreview" alt="Vista previa del mapa" style="display:none;max-width:210px;max-height:150px;object-fit:cover;border:1px solid var(--glass-border);border-radius:8px;margin-bottom:18px;">
-      <div class="section-title" style="margin-top:4px;">Rejilla del mapa</div>
-      <p style="font-size:0.82rem;color:var(--text-3);margin-bottom:12px;">Indica cuántas casillas tiene la imagen. El tablero ajustará la rejilla y centrará el mapa automáticamente.</p>
+      <div class="map-config-tabs map-config-tabs-single" aria-label="Configuración del grid del mapa">
+        <span class="active">▧ Grid</span>
+      </div>
+      <div class="section-title" style="margin-top:4px;">Configuración de la rejilla</div>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-bottom:12px;">Configura el tipo de grid, dimensiones, escala y estilo visual del mapa.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo de cuadrícula</label>
+          <select id="newMapGridType">
+            <option value="square">Cuadrada</option>
+            <option value="hex-row-odd">Hexagonal filas - impar</option>
+            <option value="hex-row-even">Hexagonal filas - par</option>
+            <option value="hex-col-odd">Hexagonal columnas - impar</option>
+            <option value="hex-col-even">Hexagonal columnas - par</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Tamaño grid (pixeles)</label><input type="number" id="newMapGridPixelSize" min="8" max="500" placeholder="Ej. 60"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Ancho de escena (px)</label><input type="number" id="newMapSceneWidth" min="100" max="20000" placeholder="Auto"></div>
+        <div class="form-group"><label>Alto de escena (px)</label><input type="number" id="newMapSceneHeight" min="100" max="20000" placeholder="Auto"></div>
+      </div>
+      <button type="button" class="btn-secondary map-config-wide" onclick="syncMapSceneDimensions()">🔗 Usar dimensiones de la imagen</button>
+      <div class="form-group">
+        <label>Padding porcentaje <span id="newMapPaddingLabel">0.05</span></label>
+        <input type="range" id="newMapPaddingPct" min="0" max="0.5" step="0.01" value="0.05" oninput="updateMapConfigLabels()">
+        <p class="map-config-help">Agrega espacio usable alrededor del fondo de la escena.</p>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Offset fondo horizontal (px)</label><input type="number" id="newMapOffsetX" value="0"></div>
+        <div class="form-group"><label>Offset fondo vertical (px)</label><input type="number" id="newMapOffsetY" value="0"></div>
+      </div>
+      <div class="section-title" style="margin-top:4px;">Tamaño y escala</div>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-bottom:12px;">Indica cuántas casillas tiene la imagen si quieres una calibración exacta.</p>
       <div class="form-row">
         <div class="form-group"><label>Ancho en casillas</label><input type="number" id="newMapGridWidth" min="1" max="300" placeholder="Ej. 30"></div>
         <div class="form-group"><label>Alto en casillas</label><input type="number" id="newMapGridHeight" min="1" max="300" placeholder="Ej. 20"></div>
@@ -790,6 +848,25 @@
       <div class="form-row">
         <div class="form-group"><label>Tamaño de cada casilla</label><input type="number" id="newMapFeetPerSquare" min="1" max="1000" value="5"></div>
         <div class="form-group"><label>Unidad</label><select id="newMapDistanceUnit"><option value="pies">pies</option><option value="metros">metros</option></select></div>
+      </div>
+      <div class="section-title" style="margin-top:4px;">Estilo visual</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Estilo de grid</label>
+          <select id="newMapGridStyle">
+            <option value="solid">Líneas sólidas</option>
+            <option value="dashed">Líneas punteadas largas</option>
+            <option value="dotted">Puntos</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Grosor</label><input type="number" id="newMapGridThickness" min="0.25" max="10" step="0.25" value="1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Color</label><input type="color" id="newMapGridColor" value="#a855f7"></div>
+        <div class="form-group">
+          <label>Opacidad <span id="newMapGridOpacityLabel">0.16</span></label>
+          <input type="range" id="newMapGridOpacity" min="0" max="1" step="0.01" value="0.16" oninput="updateMapConfigLabels()">
+        </div>
       </div>
       <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:0.86rem;margin-bottom:12px;"><input type="checkbox" id="newMapHideGrid" style="width:auto;"> Ocultar rejilla al cargar este mapa</label>
     </div>

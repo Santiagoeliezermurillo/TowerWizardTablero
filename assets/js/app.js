@@ -581,7 +581,7 @@ function renderPageContent(pg) {
   else if(pg==='enemigos') renderEnemiesPage();
   else if(pg==='npc') renderNpcPage();
   else if(pg==='manual') renderManualsPage();
-  else if(pg==='partida') renderSavesList();
+  else if(pg==='partida') { renderSavesList(); renderInvitePanel(); }
   else if(pg==='mapa') renderQuickCombatPanel();
 }
 
@@ -3640,7 +3640,11 @@ function saveSpellToDM() {
 // ===================================================
 // MODALS GENERAL
 // ===================================================
-function closeModals() { document.querySelectorAll('.modal-overlay').forEach(m=>m.classList.remove('active')); }
+function closeModals() {
+  document.querySelectorAll('.modal-overlay').forEach(m=>m.classList.remove('active'));
+  clearMapEditorGridPreview();
+  updateTokenPanelAvoidance(false);
+}
 
 let characterDraftSkills = [];
 let characterEditingId = null;
@@ -3853,28 +3857,124 @@ function levelUpCharacter(charId = state.activeCharId) {
 }
 
 function openMapListModal() {
+  updateTokenPanelAvoidance(true);
   document.getElementById('mapListModalOverlay').classList.add('active');
   document.getElementById('btnNewMap').style.display = isDM() ? '' : 'none';
   renderMapList();
 }
+function getMapEditorNumber(id, fallback = 0) {
+  const value = Number(document.getElementById(id)?.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+function setMapEditorValue(id, value) {
+  const el = document.getElementById(id);
+  if(el) el.value = value ?? '';
+}
+function updateMapConfigLabels() {
+  const padding = document.getElementById('newMapPaddingPct');
+  const opacity = document.getElementById('newMapGridOpacity');
+  const paddingLabel = document.getElementById('newMapPaddingLabel');
+  const opacityLabel = document.getElementById('newMapGridOpacityLabel');
+  if(paddingLabel && padding) paddingLabel.textContent = Number(padding.value || 0).toFixed(2);
+  if(opacityLabel && opacity) opacityLabel.textContent = Number(opacity.value || 0).toFixed(2);
+}
+function getMapEditorDraft() {
+  const modal = document.getElementById('mapCreateModalOverlay');
+  const map = maps.find(m => String(m.id) === String(modal?.dataset.mapId));
+  if(!map || map.id !== state.activeMapId) return null;
+  return {
+    ...map,
+    gridType: document.getElementById('newMapGridType')?.value || map.gridType || 'square',
+    gridPixelSize: Math.max(0, parseFloat(document.getElementById('newMapGridPixelSize')?.value) || 0),
+    sceneWidth: Math.max(0, parseInt(document.getElementById('newMapSceneWidth')?.value) || 0),
+    sceneHeight: Math.max(0, parseInt(document.getElementById('newMapSceneHeight')?.value) || 0),
+    paddingPct: Math.max(0, Math.min(0.5, parseFloat(document.getElementById('newMapPaddingPct')?.value) || 0)),
+    backgroundOffsetX: getMapEditorNumber('newMapOffsetX', 0),
+    backgroundOffsetY: getMapEditorNumber('newMapOffsetY', 0),
+    gridWidth: Math.max(0, parseInt(document.getElementById('newMapGridWidth')?.value) || 0),
+    gridHeight: Math.max(0, parseInt(document.getElementById('newMapGridHeight')?.value) || 0),
+    gridStyle: document.getElementById('newMapGridStyle')?.value || map.gridStyle || 'solid',
+    gridThickness: Math.max(0.25, parseFloat(document.getElementById('newMapGridThickness')?.value) || 1),
+    gridColor: /^#[0-9a-f]{6}$/i.test(document.getElementById('newMapGridColor')?.value || '') ? document.getElementById('newMapGridColor').value : '#a855f7',
+    gridOpacity: Math.max(0, Math.min(1, parseFloat(document.getElementById('newMapGridOpacity')?.value) || 0)),
+    gridHidden: document.getElementById('newMapHideGrid')?.checked === true
+  };
+}
+function previewMapEditorGrid() {
+  updateMapConfigLabels();
+  const draft = getMapEditorDraft();
+  if(!draft) {
+    mapState.gridPreview = null;
+    return;
+  }
+  mapState.gridPreview = draft;
+  mapState.gridVisible = draft.gridHidden !== true;
+  if(mapState.canvas && typeof drawMap === 'function') drawMap();
+}
+function clearMapEditorGridPreview() {
+  if(!mapState?.gridPreview) return;
+  mapState.gridPreview = null;
+  const activeMap = maps.find(m => m.id === state.activeMapId);
+  mapState.gridVisible = activeMap?.gridHidden !== true;
+  if(mapState.canvas && typeof drawMap === 'function') drawMap();
+}
+function bindMapEditorPreview() {
+  const modal = document.getElementById('mapCreateModalOverlay');
+  if(!modal) return;
+  modal.querySelectorAll('input,select').forEach(el => {
+    if(el.dataset.previewBound === 'true') return;
+    el.dataset.previewBound = 'true';
+    el.addEventListener('input', previewMapEditorGrid);
+    el.addEventListener('change', previewMapEditorGrid);
+  });
+}
+function syncMapSceneDimensions() {
+  const preview = document.getElementById('newMapPreview');
+  const width = Number(preview?.dataset.naturalWidth) || preview?.naturalWidth || 0;
+  const height = Number(preview?.dataset.naturalHeight) || preview?.naturalHeight || 0;
+  if(!width || !height) {
+    alert('Primero selecciona una imagen del mapa para tomar sus dimensiones.');
+    return;
+  }
+  setMapEditorValue('newMapSceneWidth', Math.round(width));
+  setMapEditorValue('newMapSceneHeight', Math.round(height));
+  previewMapEditorGrid();
+}
 function openMapCreateModal(mapId = null) {
   if(!isDM()) return;
   closeModals();
+  updateTokenPanelAvoidance(true);
   const modal = document.getElementById('mapCreateModalOverlay');
   const map = maps.find(m => String(m.id) === String(mapId));
   modal.dataset.mapId = map?.id || '';
   document.getElementById('mapEditorTitle').textContent = map ? 'Editar Mapa' : 'Nuevo Mapa';
   document.getElementById('newMapName').value = map?.name || '';
   document.getElementById('newMapAuthor').value = map?.author || 'Mis Mapas';
+  setMapEditorValue('newMapGridType', map?.gridType || 'square');
+  setMapEditorValue('newMapGridPixelSize', map?.gridPixelSize || '');
+  setMapEditorValue('newMapSceneWidth', map?.sceneWidth || '');
+  setMapEditorValue('newMapSceneHeight', map?.sceneHeight || '');
+  setMapEditorValue('newMapPaddingPct', Number.isFinite(Number(map?.paddingPct)) ? Number(map.paddingPct) : 0.05);
+  setMapEditorValue('newMapOffsetX', Number.isFinite(Number(map?.backgroundOffsetX)) ? Number(map.backgroundOffsetX) : 0);
+  setMapEditorValue('newMapOffsetY', Number.isFinite(Number(map?.backgroundOffsetY)) ? Number(map.backgroundOffsetY) : 0);
   document.getElementById('newMapGridWidth').value = map?.gridWidth || '';
   document.getElementById('newMapGridHeight').value = map?.gridHeight || '';
   document.getElementById('newMapFeetPerSquare').value = map?.feetPerSquare || 5;
   document.getElementById('newMapDistanceUnit').value = map?.distanceUnit || 'pies';
+  setMapEditorValue('newMapGridStyle', map?.gridStyle || 'solid');
+  setMapEditorValue('newMapGridThickness', Number.isFinite(Number(map?.gridThickness)) ? Number(map.gridThickness) : 1);
+  setMapEditorValue('newMapGridColor', /^#[0-9a-f]{6}$/i.test(map?.gridColor || '') ? map.gridColor : '#a855f7');
+  setMapEditorValue('newMapGridOpacity', Number.isFinite(Number(map?.gridOpacity)) ? Number(map.gridOpacity) : 0.16);
   document.getElementById('newMapHideGrid').checked = map?.gridHidden === true;
   document.getElementById('newMapImageFile').value = '';
   const preview = document.getElementById('newMapPreview');
   preview.src = map?.image || '';
+  preview.dataset.naturalWidth = map?.imageWidth || '';
+  preview.dataset.naturalHeight = map?.imageHeight || '';
   preview.style.display = map?.image ? '' : 'none';
+  updateMapConfigLabels();
+  bindMapEditorPreview();
+  previewMapEditorGrid();
   modal.classList.add('active');
 }
 function previewMapImage(event) {
@@ -3882,6 +3982,12 @@ function previewMapImage(event) {
   const preview = document.getElementById('newMapPreview');
   if(!file) return;
   preview.src = URL.createObjectURL(file);
+  preview.onload = () => {
+    preview.dataset.naturalWidth = preview.naturalWidth || '';
+    preview.dataset.naturalHeight = preview.naturalHeight || '';
+    if(!document.getElementById('newMapSceneWidth').value) document.getElementById('newMapSceneWidth').value = preview.naturalWidth || '';
+    if(!document.getElementById('newMapSceneHeight').value) document.getElementById('newMapSceneHeight').value = preview.naturalHeight || '';
+  };
   preview.style.display = '';
 }
 function filterMapList() { renderMapList(); }
@@ -3921,6 +4027,7 @@ function selectMap(id) {
 }
 function openSceneListModal() {
   if(!isDM()) return;
+  updateTokenPanelAvoidance(true);
   const input=document.getElementById('newSceneName');
   if(input && !input.value.trim()) {
     const map=maps.find(m=>m.id===state.activeMapId);
@@ -4071,13 +4178,33 @@ function saveMap() {
   const fi = document.getElementById('newMapImageFile');
   const modal = document.getElementById('mapCreateModalOverlay');
   const editing = maps.find(m => String(m.id) === String(modal.dataset.mapId));
+  const gridType = document.getElementById('newMapGridType').value || 'square';
+  const gridPixelSize = Math.max(0, parseFloat(document.getElementById('newMapGridPixelSize').value) || 0);
+  const sceneWidth = Math.max(0, parseInt(document.getElementById('newMapSceneWidth').value) || 0);
+  const sceneHeight = Math.max(0, parseInt(document.getElementById('newMapSceneHeight').value) || 0);
+  const paddingPct = Math.max(0, Math.min(0.5, parseFloat(document.getElementById('newMapPaddingPct').value) || 0));
+  const backgroundOffsetX = getMapEditorNumber('newMapOffsetX', 0);
+  const backgroundOffsetY = getMapEditorNumber('newMapOffsetY', 0);
   const gridWidth = Math.max(0, parseInt(document.getElementById('newMapGridWidth').value) || 0);
   const gridHeight = Math.max(0, parseInt(document.getElementById('newMapGridHeight').value) || 0);
   const feetPerSquare = Math.max(1, parseFloat(document.getElementById('newMapFeetPerSquare').value) || 5);
   const distanceUnit = document.getElementById('newMapDistanceUnit').value || 'pies';
+  const gridStyle = document.getElementById('newMapGridStyle').value || 'solid';
+  const gridThickness = Math.max(0.25, parseFloat(document.getElementById('newMapGridThickness').value) || 1);
+  const gridColor = /^#[0-9a-f]{6}$/i.test(document.getElementById('newMapGridColor').value || '') ? document.getElementById('newMapGridColor').value : '#a855f7';
+  const gridOpacity = Math.max(0, Math.min(1, parseFloat(document.getElementById('newMapGridOpacity').value) || 0));
   const gridHidden = document.getElementById('newMapHideGrid').checked;
   const create = (img) => {
-    const mapData = {name,author,gridWidth,gridHeight,feetPerSquare,distanceUnit,gridHidden};
+    const preview = document.getElementById('newMapPreview');
+    const imageWidth = Number(preview?.dataset.naturalWidth) || 0;
+    const imageHeight = Number(preview?.dataset.naturalHeight) || 0;
+    const mapData = {
+      name, author, gridType, gridPixelSize, sceneWidth, sceneHeight,
+      paddingPct, backgroundOffsetX, backgroundOffsetY,
+      gridWidth, gridHeight, feetPerSquare, distanceUnit,
+      gridStyle, gridThickness, gridColor, gridOpacity, gridHidden,
+      imageWidth, imageHeight
+    };
     if(editing) {
       Object.assign(editing, mapData);
       if(img) editing.thumb = editing.image = img;
@@ -4163,6 +4290,7 @@ function sendChatMessage() {
 }
 function addChatMessage(type,sender,text) {
   const box = document.getElementById('chatBox');
+  if(!box) return;
   let html;
   if(type==='sys') html=`<div class="chat-msg msg-sys">${text}</div>`;
   else html=`<div class="chat-msg msg-${type}"><div class="msg-sender">${sender}</div><div>${text}</div></div>`;
@@ -4630,7 +4758,7 @@ const mapState = {
   canvas:null,ctx:null,zoom:1,offsetX:0,offsetY:0,
   isDragging:false,dragStartX:0,dragStartY:0,
   tokens:[],structures:[],walls:[],fogStrokes:[],exploredFogPolygons:[],wallDraft:null,pendingStructure:null,structureMode:'add',draggingToken:null,rotatingToken:null,selectedTokenId:null,pings:[],currentImage:null,
-  gridVisible:true, fogOfWar:false, fogSeeThrough:false, fogExploredAreas:false, measurement:null,
+  gridVisible:true, gridPreview:null, fogOfWar:false, fogSeeThrough:false, fogExploredAreas:false, measurement:null,
   weather: 'none', music: 'none', externalMusicUrl:null, weatherParticles: [],
   lightningFlash: 0,
   lastTokenBroadcast: 0,
@@ -4694,22 +4822,37 @@ function getCurrentMapView() {
   return { zoom: mapState.zoom, offsetX: mapState.offsetX, offsetY: mapState.offsetY, gridVisible: mapState.gridVisible, fogOfWar: mapState.fogOfWar, fogExploredAreas: mapState.fogExploredAreas };
 }
 function getActiveMapGrid() {
-  const map = maps.find(m => m.id === state.activeMapId);
+  const activeMap = maps.find(m => m.id === state.activeMapId);
+  const map = mapState.gridPreview && String(mapState.gridPreview.id) === String(state.activeMapId) ? mapState.gridPreview : activeMap;
   const image = mapState.currentImage;
-  let size = 50;
+  let size = Math.max(0, Number(map?.gridPixelSize) || 0) || 50;
   const hasWidth = map?.gridWidth > 0;
   const hasHeight = map?.gridHeight > 0;
-  if(hasWidth && hasHeight && image?.width && image?.height) {
+  if(!(Number(map?.gridPixelSize) > 0) && hasWidth && hasHeight && image?.width && image?.height) {
     size = Math.min(image.width / map.gridWidth, image.height / map.gridHeight);
-  } else if(hasWidth && image?.width) size = image.width / map.gridWidth;
-  else if(hasHeight && image?.height) size = image.height / map.gridHeight;
+  } else if(!(Number(map?.gridPixelSize) > 0) && hasWidth && image?.width) size = image.width / map.gridWidth;
+  else if(!(Number(map?.gridPixelSize) > 0) && hasHeight && image?.height) size = image.height / map.gridHeight;
   const safeSize = Math.max(4, size);
-  const width = hasWidth ? map.gridWidth * safeSize : (image?.width || 6000);
-  const height = hasHeight ? map.gridHeight * safeSize : (image?.height || 6000);
+  const sceneWidth = Math.max(0, Number(map?.sceneWidth) || 0);
+  const sceneHeight = Math.max(0, Number(map?.sceneHeight) || 0);
+  const width = sceneWidth || (hasWidth ? map.gridWidth * safeSize : (image?.width || 6000));
+  const height = sceneHeight || (hasHeight ? map.gridHeight * safeSize : (image?.height || 6000));
+  const paddingPct = Math.max(0, Math.min(0.5, Number(map?.paddingPct) || 0));
+  const paddingX = width * paddingPct;
+  const paddingY = height * paddingPct;
   return {
     size: safeSize,
     width,
     height,
+    type: map?.gridType || 'square',
+    style: map?.gridStyle || 'solid',
+    thickness: Math.max(0.25, Number(map?.gridThickness) || 1),
+    color: /^#[0-9a-f]{6}$/i.test(map?.gridColor || '') ? map.gridColor : '#a855f7',
+    opacity: Math.max(0, Math.min(1, Number.isFinite(Number(map?.gridOpacity)) ? Number(map.gridOpacity) : 0.16)),
+    backgroundX: paddingX + (Number(map?.backgroundOffsetX) || 0),
+    backgroundY: paddingY + (Number(map?.backgroundOffsetY) || 0),
+    backgroundWidth: Math.max(1, width - paddingX * 2),
+    backgroundHeight: Math.max(1, height - paddingY * 2),
     distance: Math.max(1, Number(map?.feetPerSquare) || 5),
     unit: map?.distanceUnit || 'pies'
   };
@@ -5019,6 +5162,10 @@ function getTokenPortraitMarkup(combatant) {
   if(!combatant) return '<div class="token-action-initials">?</div>';
   if(combatant.portrait) return `<img src="${combatant.portrait}" alt="${escapeHTML(combatant.name||'Token')}">`;
   return `<div class="token-action-initials" style="color:${combatant.color||'#a855f7'};">${escapeHTML(combatant.initials||initials(combatant.name||'TK'))}</div>`;
+}
+function updateTokenPanelAvoidance(active = false) {
+  const wrap=document.getElementById('mapContainer');
+  if(wrap) wrap.classList.toggle('director-panel-open', active === true);
 }
 function renderTokenActionPanel() {
   const panel=document.getElementById('tokenActionPanel');
@@ -5532,7 +5679,8 @@ function rememberExploredFovPolygon(polygon, playerX, playerY, radio, options={}
   if(!mapState.fogOfWar || !Array.isArray(polygon) || polygon.length<3) return;
   const visionAngle=Number(options.visionAngle ?? options.angle ?? 360);
   const facing=Number(options.facing)||0;
-  const key=getExploredFovKey(playerX,playerY,radio,visionAngle,facing);
+  const ownerKey=options.userId ? `:${options.userId}` : '';
+  const key=getExploredFovKey(playerX,playerY,radio,visionAngle,facing) + ownerKey;
   if(mapState.exploredFogPolygons.some(item=>item?.key===key)) return;
   const stride=Math.max(1,Math.ceil(polygon.length/80));
   const points=polygon
@@ -5545,6 +5693,9 @@ function rememberExploredFovPolygon(polygon, playerX, playerY, radio, options={}
     radius:Math.round((Number(radio)||FOV_RADIUS)*10)/10,
     visionAngle,
     facing,
+    tokenId:options.tokenId || null,
+    combatantId:options.combatantId ?? null,
+    userId:options.userId || null,
     points
   });
   if(mapState.exploredFogPolygons.length>FOV_MAX_EXPLORED_POLYGONS) {
@@ -5553,10 +5704,12 @@ function rememberExploredFovPolygon(polygon, playerX, playerY, radio, options={}
   storeCurrentMapFog();
   broadcastFogStrokes();
 }
-function cutExploredFogAreas(fogCtx) {
+function cutExploredFogAreas(fogCtx, options={}) {
   if(!mapState.fogExploredAreas || !Array.isArray(mapState.exploredFogPolygons)) return;
+  const allowedUserId=options.userId || null;
   mapState.exploredFogPolygons.forEach(area=>{
     if(!area || !Array.isArray(area.points) || area.points.length<3) return;
+    if(allowedUserId && area.userId !== allowedUserId) return;
     cutFovPolygon(
       fogCtx,
       area.points,
@@ -5588,10 +5741,7 @@ function getTokenImageRotation(token, combatant) {
 }
 function playerHasVisionAccess(c) {
   if(!state.currentUser || !c) return false;
-  if(c.userId === state.currentUser.id) return true;
-  const vision = normalizeCharacterVision(c);
-  if(vision.team === 'none') return false;
-  return getOwnedCharacters().some(owned => normalizeCharacterVision(owned).team === vision.team);
+  return c.userId === state.currentUser.id;
 }
 function getPlayerVisionTokens() {
   if(isDM() || !state.currentUser) return [];
@@ -5600,6 +5750,15 @@ function getPlayerVisionTokens() {
     const c=getCombatantById(t.id);
     const vision = c ? normalizeCharacterVision(c) : null;
     return c && c.type==='player' && vision.clearsFog && vision.radiusSquares > 0 && playerHasVisionAccess(c);
+  });
+}
+function getDmVisionTokens() {
+  if(!isDM()) return [];
+  return mapState.tokens.filter(t=>{
+    if(t.hidden) return false;
+    const c=getCombatantById(t.id);
+    const vision = c ? normalizeCharacterVision(c) : null;
+    return c && c.type==='player' && vision.clearsFog && vision.radiusSquares > 0;
   });
 }
 function getTokenVisionRenderConfig(token, combatant, grid=getActiveMapGrid()) {
@@ -5665,30 +5824,99 @@ function drawPlayerVisionFog(ctx) {
   const fogCtx=resetFovOverlay(ctx,fogOpacity);
   if(isDM()) {
     if(mapState.fogExploredAreas && !mapState.fogSeeThrough) cutExploredFogAreas(fogCtx);
-    const selected=getSelectedVisionToken();
-    const config=selected && getTokenVisionRenderConfig(selected.token,selected.combatant,grid);
-    if(config) {
-      const polygon=getCachedFovPolygon(selected.token.x,selected.token.y,config.radius,mapState.walls,config.options);
-      rememberExploredFovPolygon(polygon,selected.token.x,selected.token.y,config.radius,config.options);
-      cutAmbientVisionArea(fogCtx,selected.token.x,selected.token.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,config.options);
-      cutFovPolygon(fogCtx,polygon,selected.token.x,selected.token.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,config.options);
-    }
+    getDmVisionTokens().forEach(t=>{
+      const c=getCombatantById(t.id);
+      const config=getTokenVisionRenderConfig(t,c,grid);
+      if(!config) return;
+      const ownerOptions={...config.options,tokenId:t.tokenId,combatantId:c.id,userId:c.userId||null};
+      const polygon=getCachedFovPolygon(t.x,t.y,config.radius,mapState.walls,ownerOptions);
+      rememberExploredFovPolygon(polygon,t.x,t.y,config.radius,ownerOptions);
+      cutAmbientVisionArea(fogCtx,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,ownerOptions);
+      cutFovPolygon(fogCtx,polygon,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,ownerOptions);
+    });
     ctx.drawImage(fovRenderCache.canvas,0,0);
     return;
   }
 
   const visionTokens=getPlayerVisionTokens();
-  cutExploredFogAreas(fogCtx);
+  cutExploredFogAreas(fogCtx,{userId:state.currentUser.id});
   visionTokens.forEach(t=>{
     const c=getCombatantById(t.id);
     const config=getTokenVisionRenderConfig(t,c,grid);
     if(!config) return;
-    const polygon=getCachedFovPolygon(t.x,t.y,config.radius,mapState.walls,config.options);
-    rememberExploredFovPolygon(polygon,t.x,t.y,config.radius,config.options);
-    cutAmbientVisionArea(fogCtx,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,config.options);
-    cutFovPolygon(fogCtx,polygon,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,config.options);
+    const ownerOptions={...config.options,tokenId:t.tokenId,combatantId:c.id,userId:c.userId||state.currentUser.id};
+    const polygon=getCachedFovPolygon(t.x,t.y,config.radius,mapState.walls,ownerOptions);
+    rememberExploredFovPolygon(polygon,t.x,t.y,config.radius,ownerOptions);
+    cutAmbientVisionArea(fogCtx,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,ownerOptions);
+    cutFovPolygon(fogCtx,polygon,t.x,t.y,config.radius,mapState.zoom,mapState.offsetX,mapState.offsetY,ownerOptions);
   });
   ctx.drawImage(fovRenderCache.canvas,0,0);
+}
+function hexToRgba(hex, alpha=1) {
+  const clean=String(hex||'#a855f7').replace('#','');
+  const value=/^[0-9a-f]{6}$/i.test(clean) ? clean : 'a855f7';
+  const r=parseInt(value.slice(0,2),16);
+  const g=parseInt(value.slice(2,4),16);
+  const b=parseInt(value.slice(4,6),16);
+  return `rgba(${r},${g},${b},${Math.max(0,Math.min(1,alpha))})`;
+}
+function applyGridStrokeStyle(ctx, grid) {
+  ctx.strokeStyle=hexToRgba(grid.color,grid.opacity);
+  ctx.lineWidth=Math.max(0.25,grid.thickness);
+  if(grid.style==='dashed') ctx.setLineDash([grid.size*0.35,grid.size*0.18]);
+  else if(grid.style==='dotted') ctx.setLineDash([ctx.lineWidth,grid.size*0.18]);
+  else ctx.setLineDash([]);
+  ctx.lineCap=grid.style==='dotted'?'round':'butt';
+}
+function drawHexCell(ctx,cx,cy,w,h,pointy=false) {
+  ctx.beginPath();
+  if(pointy) {
+    ctx.moveTo(cx,cy-h/2);
+    ctx.lineTo(cx+w/2,cy-h/4);
+    ctx.lineTo(cx+w/2,cy+h/4);
+    ctx.lineTo(cx,cy+h/2);
+    ctx.lineTo(cx-w/2,cy+h/4);
+    ctx.lineTo(cx-w/2,cy-h/4);
+  } else {
+    ctx.moveTo(cx-w/2,cy);
+    ctx.lineTo(cx-w/4,cy-h/2);
+    ctx.lineTo(cx+w/4,cy-h/2);
+    ctx.lineTo(cx+w/2,cy);
+    ctx.lineTo(cx+w/4,cy+h/2);
+    ctx.lineTo(cx-w/4,cy+h/2);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
+function drawMapGridOverlay(ctx, grid) {
+  if(!mapState.gridVisible) return;
+  ctx.save();
+  applyGridStrokeStyle(ctx,grid);
+  ctx.beginPath();
+  if(grid.type==='square') {
+    for(let x=0;x<=grid.width+0.1;x+=grid.size){ctx.moveTo(x,0);ctx.lineTo(x,grid.height);}
+    for(let y=0;y<=grid.height+0.1;y+=grid.size){ctx.moveTo(0,y);ctx.lineTo(grid.width,y);}
+    ctx.stroke();
+  } else if(grid.type.startsWith('hex-row')) {
+    const w=grid.size;
+    const h=Math.sqrt(3)/2*w;
+    const stepX=w*0.75;
+    const odd=grid.type.endsWith('odd');
+    for(let col=0,x=w/2;x<=grid.width+w;x+=stepX,col++) {
+      const offset=(col%2===1)===odd ? h/2 : 0;
+      for(let y=h/2-offset;y<=grid.height+h;y+=h) drawHexCell(ctx,x,y,w,h,false);
+    }
+  } else {
+    const h=grid.size;
+    const w=Math.sqrt(3)/2*h;
+    const stepY=h*0.75;
+    const odd=grid.type.endsWith('odd');
+    for(let row=0,y=h/2;y<=grid.height+h;y+=stepY,row++) {
+      const offset=(row%2===1)===odd ? w/2 : 0;
+      for(let x=w/2-offset;x<=grid.width+w;x+=w) drawHexCell(ctx,x,y,w,h,true);
+    }
+  }
+  ctx.restore();
 }
 function drawMap() {
   const {canvas,ctx,zoom,offsetX,offsetY,currentImage,pings,tokens}=mapState;
@@ -5697,17 +5925,12 @@ function drawMap() {
   ctx.save(); ctx.translate(offsetX,offsetY); ctx.scale(zoom,zoom);
   ctx.fillStyle='#020109'; ctx.fillRect(-5000,-5000,10000,10000);
   const grid=getActiveMapGrid();
-  if(currentImage) { ctx.drawImage(currentImage,0,0,grid.width,grid.height); }
+  if(currentImage) { ctx.drawImage(currentImage,grid.backgroundX,grid.backgroundY,grid.backgroundWidth,grid.backgroundHeight); }
   else if(m&&m.rooms) {
     ctx.fillStyle='#0d0520'; ctx.strokeStyle='#1f0a45'; ctx.lineWidth=3;
     m.rooms.forEach(r=>{ctx.fillRect(r.x,r.y,r.w,r.h);ctx.strokeRect(r.x,r.y,r.w,r.h);});
   }
-  if(mapState.gridVisible) {
-    ctx.strokeStyle='rgba(168,85,247,0.16)'; ctx.lineWidth=1; ctx.beginPath();
-    for(let x=0;x<=grid.width+0.1;x+=grid.size){ctx.moveTo(x,0);ctx.lineTo(x,grid.height);}
-    for(let y=0;y<=grid.height+0.1;y+=grid.size){ctx.moveTo(0,y);ctx.lineTo(grid.width,y);}
-    ctx.stroke();
-  }
+  drawMapGridOverlay(ctx,grid);
   drawVisionWalls(ctx);
   mapState.structures.forEach(s=>{
     ctx.save();
@@ -6273,8 +6496,9 @@ function closeMapControlPanels(exceptId = '') {
     if(id !== exceptId) document.getElementById(id).style.display='none';
   });
   if(exceptId !== 'weatherPanel') document.getElementById('toolWeather').classList.remove('active');
-  if(exceptId !== 'structuresPanel') document.getElementById('toolStructures').classList.remove('active');
+  if(exceptId !== 'structuresPanel') document.getElementById('toolStructures')?.classList.remove('active');
   if(exceptId !== 'musicPanel') document.getElementById('toolMusic').classList.remove('active');
+  updateTokenPanelAvoidance(!!exceptId);
 }
 function toggleWeatherPanel() {
   if (!isDM()) return;
@@ -6284,6 +6508,7 @@ function toggleWeatherPanel() {
   closeMapControlPanels(isHidden ? 'weatherPanel' : '');
   panel.style.display = isHidden ? 'flex' : 'none';
   document.getElementById('toolWeather').classList.toggle('active', isHidden);
+  updateTokenPanelAvoidance(isHidden);
   if(isHidden) renderCustomWeatherList();
 }
 function toggleStructuresPanel() {
@@ -6292,7 +6517,8 @@ function toggleStructuresPanel() {
   const isHidden=panel.style.display==='none';
   closeMapControlPanels(isHidden ? 'structuresPanel' : '');
   panel.style.display=isHidden?'flex':'none';
-  document.getElementById('toolStructures').classList.toggle('active',isHidden);
+  document.getElementById('toolStructures')?.classList.toggle('active',isHidden);
+  updateTokenPanelAvoidance(isHidden);
   if(isHidden) {
     renderStructureCatalog();
     setStructureMode(mapState.structureMode||'add');
@@ -6487,6 +6713,7 @@ function toggleMusicPanel() {
   closeMapControlPanels(isHidden ? 'musicPanel' : '');
   panel.style.display=isHidden?'flex':'none';
   document.getElementById('toolMusic').classList.toggle('active',isHidden);
+  updateTokenPanelAvoidance(isHidden);
   if(isHidden) renderCustomMusicList();
 }
 function stopExternalMusic() {
@@ -6901,6 +7128,136 @@ function openActiveManualFile() {
 // ===================================================
 // PARTIDA MANAGEMENT (SAVES)
 // ===================================================
+function getCurrentInviteCode() {
+  if(typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
+    if(multiplayer.code) return multiplayer.code.startsWith('TM-') ? multiplayer.code : `TM-${multiplayer.code}`;
+    const headerCode = document.getElementById('headerGameCodeVal')?.textContent?.trim();
+    if(headerCode && headerCode !== '-') return headerCode.startsWith('TM-') ? headerCode : `TM-${headerCode}`;
+  }
+  return '';
+}
+
+function getInviteMessage() {
+  const code = getCurrentInviteCode();
+  if(!code) return '';
+  return `Te invito a mi partida de Tower Wizard. Entra, elige "Unirse a una Partida" y usa este código: ${code}`;
+}
+
+function renderInvitePanel() {
+  const codeEl = document.getElementById('partidaInviteCode');
+  const hintEl = document.getElementById('partidaInviteHint');
+  const btn = document.getElementById('partidaInviteButton');
+  if(!codeEl || !hintEl || !btn) return;
+  const code = getCurrentInviteCode();
+  const active = !!code;
+  codeEl.textContent = active ? code : 'Sin partida activa';
+  hintEl.textContent = active
+    ? 'Los jugadores deben usar este código en "Unirse a una Partida".'
+    : 'Crea o inicia una partida multijugador para generar un código.';
+  btn.disabled = !active;
+  renderRoomAccessPanel();
+}
+
+function getApprovedPlayersStorageKey() {
+  const code = multiplayer.code || getCurrentInviteCode().replace(/^TM-/,'');
+  return code ? `crq_approved_players_${code}` : 'crq_approved_players';
+}
+
+function loadApprovedPlayersForRoom() {
+  multiplayer.approvedPlayers = loadLS(getApprovedPlayersStorageKey(), {});
+}
+
+function saveApprovedPlayersForRoom() {
+  saveLS(getApprovedPlayersStorageKey(), multiplayer.approvedPlayers || {});
+}
+
+function addRoomEvent(type, text) {
+  if(!multiplayer.roomEvents) multiplayer.roomEvents = [];
+  multiplayer.roomEvents.unshift({ id:Date.now()+Math.random(), type, text, time:Date.now() });
+  multiplayer.roomEvents = multiplayer.roomEvents.slice(0, 30);
+  renderRoomAccessPanel();
+}
+
+function getPendingJoinRows() {
+  if(!multiplayer.pendingJoins) return [];
+  return Object.entries(multiplayer.pendingJoins)
+    .filter(([,row]) => row && row.conn && row.conn.open)
+    .map(([peer,row]) => ({ peer, ...row }));
+}
+
+function renderRoomAccessPanel() {
+  const pendingList = document.getElementById('roomPendingList');
+  const connectedList = document.getElementById('roomConnectedList');
+  const eventLog = document.getElementById('roomEventLog');
+  if(!pendingList || !connectedList || !eventLog) return;
+  if(!isDM() || !multiplayer.isHost()) {
+    pendingList.innerHTML = '<div class="room-access-empty">Solo el Dungeon Master anfitrión puede aprobar ingresos.</div>';
+    connectedList.innerHTML = '<div class="room-access-empty">Crea o inicia una sala multijugador para ver jugadores.</div>';
+    eventLog.innerHTML = '<div class="room-access-empty">Sin sala activa.</div>';
+    return;
+  }
+  const pending = getPendingJoinRows();
+  pendingList.innerHTML = pending.length ? pending.map(row => `
+    <div class="room-access-row">
+      <div>
+        <div class="room-access-name">${escapeHTML(row.username || 'Jugador')}</div>
+        <div class="room-access-meta">Quiere entrar a la sala</div>
+      </div>
+      <div class="room-access-actions">
+        <button class="room-accept-btn" onclick="acceptPendingJoin('${encodeInline(row.peer)}')">Aceptar</button>
+        <button class="room-reject-btn" onclick="rejectPendingJoin('${encodeInline(row.peer)}')">Rechazar</button>
+      </div>
+    </div>
+  `).join('') : '<div class="room-access-empty">No hay jugadores esperando aprobación.</div>';
+  const connected = getConnectedPlayerRows();
+  connectedList.innerHTML = connected.length ? connected.map(row => `
+    <div class="room-access-row">
+      <div>
+        <div class="room-access-name">${escapeHTML(row.username)}</div>
+        <div class="room-access-meta">Dentro de la sala</div>
+      </div>
+      <div class="room-access-actions">
+        <button class="room-reject-btn" onclick="kickPlayer('${encodeInline(row.peer)}')">Echar</button>
+      </div>
+    </div>
+  `).join('') : '<div class="room-access-empty">No hay jugadores conectados.</div>';
+  eventLog.innerHTML = multiplayer.roomEvents?.length ? multiplayer.roomEvents.map(ev => `
+    <div class="room-event-row ${escapeHTML(ev.type || '')}">
+      <strong>${new Date(ev.time).toLocaleTimeString()}</strong> ${escapeHTML(ev.text || '')}
+    </div>
+  `).join('') : '<div class="room-access-empty">Todavía no hay movimientos en la sala.</div>';
+}
+
+function copyTextToClipboard(text) {
+  if(!text) return Promise.reject(new Error('No hay texto para copiar.'));
+  if(navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return ok ? Promise.resolve() : Promise.reject(new Error('No se pudo copiar.'));
+}
+
+function copyInviteToClipboard() {
+  const msg = getInviteMessage();
+  if(!msg) {
+    alert('Primero crea o inicia una partida multijugador para generar un código de invitación.');
+    return;
+  }
+  copyTextToClipboard(msg).then(() => {
+    const btn = document.getElementById('partidaInviteButton');
+    if(!btn) return;
+    const prev = btn.textContent;
+    btn.textContent = 'Invitación copiada ✓';
+    setTimeout(() => { btn.textContent = prev; }, 1400);
+  }).catch(() => alert('No se pudo copiar la invitación. Código: ' + getCurrentInviteCode()));
+}
+
 function renderSavesList() {
   const container = document.getElementById('saveListContainer');
   if(!container) return;
@@ -7069,8 +7426,15 @@ const multiplayer = {
   role: 'solo',
   code: null,
   clientUsernames: {},
+  pendingJoins: {},
+  approvedPlayers: {},
+  roomEvents: [],
   kicked: false,
   started: false,
+  reconnectCode: null,
+  reconnectTimer: null,
+  reconnectAttempts: 0,
+  waitingMessageShown: false,
   
   isActive() {
     return this.active;
@@ -7089,7 +7453,7 @@ const multiplayer = {
     const msg = JSON.stringify(data);
     if (this.role === 'host') {
       this.connections.forEach(c => {
-        if (c.open) c.send(msg);
+        if (c.open && this.clientUsernames[c.peer]) c.send(msg);
       });
     } else if (this.role === 'client' && this.conn && this.conn.open) {
       this.conn.send(msg);
@@ -7110,12 +7474,13 @@ const multiplayer = {
     
     if (names.length === 0) {
       listDiv.innerHTML = `<div style="color:var(--text-dim); font-style:italic; text-align:center; padding:10px 0;">Esperando aventureros...</div>`;
-      document.getElementById('btnStartHostedGame').style.display = 'none';
     } else {
       listDiv.innerHTML = names.map(n => `<div style="padding:6px 10px; margin-bottom:6px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:var(--radius-sm); font-weight:500; color:var(--text-1); display:flex; align-items:center; gap:8px;"><span class="role-dot player" style="width:8px; height:8px;"></span>${escapeHTML(n)}</div>`).join('');
-      document.getElementById('btnStartHostedGame').style.display = '';
     }
+    const startButton = document.getElementById('btnStartHostedGame');
+    if(startButton) startButton.style.display = multiplayer.code ? '' : 'none';
     renderPlayerKickList();
+    renderRoomAccessPanel();
   }
 };
 
@@ -7124,6 +7489,98 @@ function getConnectedPlayerRows() {
   return multiplayer.connections
     .filter(conn => conn && conn.open && multiplayer.clientUsernames[conn.peer])
     .map(conn => ({peer:conn.peer, username:multiplayer.clientUsernames[conn.peer]}));
+}
+
+function getOrCreatePlayerUser(joinData) {
+  let existingUser = users.find(u => u.username.toLowerCase() === joinData.username.toLowerCase());
+  if (!existingUser) {
+    let userId = joinData.userId;
+    while(users.some(u => String(u.id) === String(userId))) userId = Date.now() + Math.floor(Math.random()*1000);
+    existingUser = { id: userId, username: joinData.username, password: '', role: 'player' };
+    users.push(existingUser);
+    saveUsers();
+  }
+  return existingUser;
+}
+
+function sendInitialStateToConnection(conn) {
+  if(!conn || !conn.open) return;
+  conn.send(JSON.stringify({
+    type: 'init_state',
+    characters,
+    enemies,
+    npcs,
+    maps,
+    activeMapId: state.activeMapId,
+    tokens: mapState.tokens,
+    walls: mapState.walls,
+    fogOfWar: mapState.fogOfWar,
+    fogStrokes: mapState.fogStrokes,
+    fogExploredAreas: mapState.fogExploredAreas,
+    exploredFogPolygons: mapState.exploredFogPolygons,
+    currentTurnIndex: state.currentTurnIndex,
+    round: state.round,
+    weather: mapState.weather,
+    music: mapState.music,
+    externalMusicUrl: mapState.externalMusicUrl,
+    manualAdaptation,
+    mapView: getCurrentMapView()
+  }));
+}
+
+function approveJoinConnection(conn, joinData) {
+  if(!conn || !joinData || !conn.open) return;
+  joinData.username = String(joinData.username || 'Jugador').trim();
+  const existingUser = getOrCreatePlayerUser(joinData);
+  joinData.userId = existingUser.id;
+  multiplayer.clientUsernames[conn.peer] = joinData.username;
+  multiplayer.approvedPlayers[String(existingUser.id)] = joinData.username;
+  saveApprovedPlayersForRoom();
+  delete multiplayer.pendingJoins?.[conn.peer];
+  characters.forEach(c => {
+    if (String(c.userId) === String(existingUser.id)) c.online = true;
+  });
+  saveChars();
+  try {
+    if(conn.open) conn.send(JSON.stringify({ type:'join_accepted', message: multiplayer.started ? 'Ingreso aprobado. Entrando a la campaña...' : 'Ingreso aprobado. Esperando que el Dungeon Master inicie la campaña.' }));
+  } catch(e) {
+    console.warn('No se pudo notificar aprobacion:', e);
+  }
+  sendInitialStateToConnection(conn);
+  if(multiplayer.started) {
+    conn.send(JSON.stringify({ type:'start_game', code:'TM-' + multiplayer.code }));
+  }
+  addChatMessage('sys', '', `🔌 <b>${escapeHTML(joinData.username)}</b> se ha unido a la partida.`);
+  addRoomEvent('accept', `${joinData.username} entró a la sala.`);
+  multiplayer.broadcast({ type: 'characters_update', characters });
+  multiplayer.updateConnectedLobbyUI();
+  renderInvitePanel();
+}
+
+function acceptPendingJoin(peerEncoded) {
+  if(!isDM() || !multiplayer.isHost()) return;
+  const peer = decodeURIComponent(String(peerEncoded));
+  const request = multiplayer.pendingJoins?.[peer];
+  if(!request) return;
+  approveJoinConnection(request.conn, request);
+}
+
+function rejectPendingJoin(peerEncoded) {
+  if(!isDM() || !multiplayer.isHost()) return;
+  const peer = decodeURIComponent(String(peerEncoded));
+  const request = multiplayer.pendingJoins?.[peer];
+  if(!request) return;
+  try {
+    if(request.conn?.open) request.conn.send(JSON.stringify({ type:'join_rejected', reason:'El Dungeon Master rechazó tu ingreso a la sala.' }));
+  } catch(e) {
+    console.warn('No se pudo notificar el rechazo:', e);
+  }
+  addRoomEvent('reject', `${request.username || 'Un jugador'} fue rechazado.`);
+  setTimeout(()=>{ try { request.conn?.close(); } catch(e) {} }, 80);
+  delete multiplayer.pendingJoins[peer];
+  multiplayer.connections = multiplayer.connections.filter(c => c !== request.conn);
+  multiplayer.updateConnectedLobbyUI();
+  renderInvitePanel();
 }
 
 function renderPlayerKickList() {
@@ -7182,6 +7639,7 @@ function kickPlayer(peerEncoded) {
   multiplayer.connections = multiplayer.connections.filter(c => c !== conn);
   delete multiplayer.clientUsernames[peerId];
   addChatMessage('sys','',`<b>${escapeHTML(username)}</b> fue expulsado de la partida por el Dungeon Master.`);
+  addRoomEvent('reject', `${username} fue expulsado por el Dungeon Master.`);
   multiplayer.broadcast({ type: 'characters_update', characters });
   multiplayer.updateConnectedLobbyUI();
 }
@@ -7198,7 +7656,8 @@ function showGameSelection() {
   document.getElementById('btnCreateGameOption').style.display = dm?'':'none';
   document.getElementById('btnJoinGameOption').style.display = '';
   document.getElementById('btnLoadSavedGameOption').style.display = dm?'':'none';
-  document.getElementById('btnLoadManualOption').style.display = dm?'':'none';
+  const manualOption = document.getElementById('btnLoadManualOption');
+  if(manualOption) manualOption.style.display = 'none';
 }
 
 function cancelGameSelection() {
@@ -7212,6 +7671,8 @@ function cancelGameSelection() {
   multiplayer.started = false;
   multiplayer.connections = [];
   multiplayer.clientUsernames = {};
+  multiplayer.pendingJoins = {};
+  setConnectionStatus('offline','Desconectado');
 }
 
 function playSolo() {
@@ -7220,6 +7681,7 @@ function playSolo() {
   multiplayer.started = false;
   document.getElementById('gameSelectionScreen').classList.add('hidden');
   document.getElementById('headerGameCodeBadge').style.display = 'none';
+  setConnectionStatus('offline','Desconectado');
   launchApp();
 }
 function showLoadSavedGameMode() {
@@ -7283,7 +7745,104 @@ function generateGameCode() {
   return code;
 }
 
-function showCreateGameMode() {
+function normalizeGameCodeInput(code) {
+  const clean=String(code||'').trim().toUpperCase();
+  return clean.startsWith('TM-') ? clean : `TM-${clean}`;
+}
+
+function setConnectionStatus(status='connected', text='Conectado') {
+  const badge=document.getElementById('connectionStatusBadge');
+  if(!badge) return;
+  badge.style.display = multiplayer.isActive() ? 'block' : 'none';
+  badge.classList.remove('connected','waiting','offline');
+  badge.classList.add(status);
+  badge.textContent=text;
+}
+
+function scheduleClientReconnect(delay=3000) {
+  if(!multiplayer.isClient() || multiplayer.kicked || !multiplayer.reconnectCode) return;
+  clearTimeout(multiplayer.reconnectTimer);
+  multiplayer.reconnectTimer=setTimeout(()=>{
+    connectClientToHost(multiplayer.reconnectCode,true);
+  },delay);
+}
+
+function handleClientConnectionLost() {
+  if(multiplayer.kicked) return;
+  multiplayer.conn=null;
+  setConnectionStatus('waiting','Esperando al DM...');
+  if(!multiplayer.waitingMessageShown) {
+    multiplayer.waitingMessageShown=true;
+    addChatMessage('sys','','Conexión pausada: el Dungeon Master no está disponible. Te quedarás en la campaña mientras se reconecta.');
+  }
+  scheduleClientReconnect(2500);
+}
+
+function setupClientConnection(conn,targetId,fromReconnect=false) {
+  multiplayer.conn=conn;
+  conn.on('open', () => {
+    multiplayer.reconnectAttempts=0;
+    multiplayer.waitingMessageShown=false;
+    setConnectionStatus('connected', fromReconnect ? 'Reconectado' : 'Conectado');
+    const joinStatus=document.getElementById('joinStatus');
+    if(joinStatus) joinStatus.textContent = fromReconnect ? 'Reconectado con el Dungeon Master.' : 'Autenticando e inicializando...';
+    conn.send(JSON.stringify({
+      type: 'join',
+      username: state.currentUser.username,
+      userId: state.currentUser.id,
+      role: state.currentUser.role
+    }));
+  });
+  conn.on('data', (raw) => {
+    try {
+      const data = JSON.parse(raw);
+      handleClientIncomingData(data);
+    } catch (e) {
+      console.error('Error parsing client data:', e);
+    }
+  });
+  conn.on('close', handleClientConnectionLost);
+  conn.on('error', (err) => {
+    console.error('Connection error:', err);
+    setConnectionStatus('waiting','Reconectando...');
+    scheduleClientReconnect(Math.min(12000,2500 + multiplayer.reconnectAttempts * 1000));
+  });
+}
+
+function connectClientToHost(targetId,fromReconnect=false) {
+  if(!targetId) return;
+  multiplayer.active=true;
+  multiplayer.role='client';
+  multiplayer.reconnectCode=normalizeGameCodeInput(targetId);
+  multiplayer.reconnectAttempts++;
+  setConnectionStatus(fromReconnect ? 'waiting' : 'connected', fromReconnect ? 'Reconectando...' : 'Conectando...');
+  const openConnection=()=>{
+    if(!multiplayer.isClient() || multiplayer.kicked) return;
+    const conn=multiplayer.peer.connect(multiplayer.reconnectCode);
+    setupClientConnection(conn,multiplayer.reconnectCode,fromReconnect);
+  };
+  if(!multiplayer.peer || multiplayer.peer.destroyed) {
+    multiplayer.peer = new Peer();
+    multiplayer.peer.on('open', openConnection);
+    multiplayer.peer.on('error', (err) => {
+      console.error('Peer error:', err);
+      if(fromReconnect) {
+        setConnectionStatus('waiting','Esperando al DM...');
+        scheduleClientReconnect(Math.min(15000,3000 + multiplayer.reconnectAttempts * 1000));
+      } else {
+        const joinStatus=document.getElementById('joinStatus');
+        if(joinStatus) joinStatus.textContent = 'No se encontró la partida. Reintentando mientras el DM abre la sala...';
+        scheduleClientReconnect(4000);
+      }
+    });
+  } else if(multiplayer.peer.open) {
+    openConnection();
+  } else {
+    multiplayer.peer.on('open', openConnection);
+  }
+}
+
+function showCreateGameMode(forceNewCode=false,retryCount=0) {
   if(!isDM()) return;
   document.getElementById('gameSelectionOptions').style.display = 'none';
   document.getElementById('panelCreateGame').style.display = '';
@@ -7296,24 +7855,38 @@ function showCreateGameMode() {
   multiplayer.started = false;
   multiplayer.connections = [];
   multiplayer.clientUsernames = {};
+  multiplayer.pendingJoins = {};
+  multiplayer.roomEvents = [];
   multiplayer.updateConnectedLobbyUI();
 
-  let code = generateGameCode();
+  let savedCode = !forceNewCode ? loadLS('crq_last_host_code', null) : null;
+  let code = /^[A-Z0-9]{5}$/.test(String(savedCode||'')) ? savedCode : generateGameCode();
   let fullId = 'TM-' + code;
 
   multiplayer.peer = new Peer(fullId);
   
   multiplayer.peer.on('open', (id) => {
     multiplayer.code = code;
+    saveLS('crq_last_host_code', code);
+    loadApprovedPlayersForRoom();
     document.getElementById('hostStatus').textContent = 'Servidor activo. Esperando jugadores...';
     document.getElementById('hostCodeContainer').style.display = '';
     document.getElementById('hostGameCode').textContent = 'TM-' + code;
+    document.getElementById('headerGameCodeVal').textContent = 'TM-' + code;
+    document.getElementById('btnStartHostedGame').style.display = '';
+    setConnectionStatus('connected','Sala activa');
   });
 
   multiplayer.peer.on('error', (err) => {
     console.error('Peer error:', err);
     if (err.type === 'id-taken') {
-      showCreateGameMode();
+      if(savedCode && retryCount < 20) {
+        document.getElementById('hostStatus').textContent = 'El código anterior se está liberando. Reintentando...';
+        setTimeout(()=>showCreateGameMode(false,retryCount+1),1500);
+      } else {
+        saveLS('crq_last_host_code', null);
+        showCreateGameMode(true,0);
+      }
     } else {
       document.getElementById('hostStatus').innerHTML = `<span style="color:var(--ruby)">Error al crear partida. Inténtalo de nuevo.</span>`;
     }
@@ -7333,6 +7906,11 @@ function showCreateGameMode() {
 
     conn.on('close', () => {
       multiplayer.connections = multiplayer.connections.filter(c => c !== conn);
+      const pending = multiplayer.pendingJoins?.[conn.peer];
+      if(pending) {
+        delete multiplayer.pendingJoins[conn.peer];
+        addRoomEvent('leave', `${pending.username || 'Un jugador'} canceló su solicitud.`);
+      }
       const username = multiplayer.clientUsernames[conn.peer];
       if (username) {
         const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -7343,10 +7921,12 @@ function showCreateGameMode() {
           saveChars();
         }
         addChatMessage('sys', '', `❌ <b>${username}</b> se ha desconectado.`);
+        addRoomEvent('leave', `${username} salió de la sala.`);
         multiplayer.broadcast({ type: 'characters_update', characters });
         delete multiplayer.clientUsernames[conn.peer];
       }
       multiplayer.updateConnectedLobbyUI();
+      renderInvitePanel();
     });
   });
 }
@@ -7362,51 +7942,27 @@ function handleHostIncomingData(conn, data) {
   if (data.type === 'join') {
     if(typeof data.username !== 'string' || !data.username.trim() || data.userId == null) return;
     data.username = data.username.trim();
-    multiplayer.clientUsernames[conn.peer] = data.username;
-    
-    let existingUser = users.find(u => u.username.toLowerCase() === data.username.toLowerCase());
-    if (!existingUser) {
-      let userId = data.userId;
-      while(users.some(u => String(u.id) === String(userId))) userId = Date.now() + Math.floor(Math.random()*1000);
-      existingUser = { id: userId, username: data.username, password: '', role: 'player' };
-      users.push(existingUser);
-      saveUsers();
+    loadApprovedPlayersForRoom();
+    const alreadyApproved = multiplayer.approvedPlayers?.[String(data.userId)] === data.username;
+    if(alreadyApproved) {
+      approveJoinConnection(conn, data);
+      return;
     }
-    data.userId = existingUser.id;
-
-    characters.forEach(c => {
-      if (c.userId === data.userId) c.online = true;
-    });
-    saveChars();
-
-    conn.send(JSON.stringify({
-      type: 'init_state',
-      characters,
-      enemies,
-      npcs,
-      maps,
-      activeMapId: state.activeMapId,
-      tokens: mapState.tokens,
-      walls: mapState.walls,
-      fogOfWar: mapState.fogOfWar,
-      fogStrokes: mapState.fogStrokes,
-      fogExploredAreas: mapState.fogExploredAreas,
-      exploredFogPolygons: mapState.exploredFogPolygons,
-      currentTurnIndex: state.currentTurnIndex,
-      round: state.round,
-      weather: mapState.weather,
-      music: mapState.music,
-      externalMusicUrl: mapState.externalMusicUrl,
-      manualAdaptation,
-      mapView: getCurrentMapView()
-    }));
-    if(multiplayer.started) {
-      conn.send(JSON.stringify({ type:'start_game', code:'TM-' + multiplayer.code }));
+    multiplayer.pendingJoins[conn.peer] = {
+      conn,
+      username: data.username,
+      userId: data.userId,
+      role: data.role || 'player',
+      requestedAt: Date.now()
+    };
+    try {
+      if(conn.open) conn.send(JSON.stringify({ type:'join_pending', message:'Solicitud enviada. Esperando aprobación del Dungeon Master.' }));
+    } catch(e) {
+      console.warn('No se pudo notificar espera de aprobacion:', e);
     }
-
-    addChatMessage('sys', '', `🔌 <b>${escapeHTML(data.username)}</b> se ha unido a la partida.`);
-    multiplayer.broadcast({ type: 'characters_update', characters });
+    addRoomEvent('pending', `${data.username} quiere entrar a la sala.`);
     multiplayer.updateConnectedLobbyUI();
+    renderInvitePanel();
   }
   else if (data.type === 'chat') {
     const clientUser = getHostConnectionUser(conn);
@@ -7568,13 +8124,13 @@ function handleHostIncomingData(conn, data) {
 }
 
 function startHostedGame() {
-  if (multiplayer.connections.length === 0) return;
   multiplayer.started = true;
   multiplayer.broadcast({ type: 'start_game', code:'TM-' + multiplayer.code });
   
   document.getElementById('gameSelectionScreen').classList.add('hidden');
   document.getElementById('headerGameCodeBadge').style.display = 'flex';
   document.getElementById('headerGameCodeVal').textContent = 'TM-' + multiplayer.code;
+  setConnectionStatus('connected','Sala activa');
 
   launchApp();
 }
@@ -7593,55 +8149,12 @@ function doJoinGame() {
     return;
   }
   
-  let targetId = codeIn;
-  if (!targetId.startsWith('TM-')) {
-    targetId = 'TM-' + targetId;
-  }
+  const targetId = normalizeGameCodeInput(codeIn);
 
   document.getElementById('joinStatus').textContent = 'Conectando con el anfitrión...';
 
-  multiplayer.active = true;
-  multiplayer.role = 'client';
-  multiplayer.peer = new Peer();
-
-  multiplayer.peer.on('open', (id) => {
-    const conn = multiplayer.peer.connect(targetId);
-    multiplayer.conn = conn;
-
-    conn.on('open', () => {
-      document.getElementById('joinStatus').textContent = 'Autenticando e inicializando...';
-      conn.send(JSON.stringify({
-        type: 'join',
-        username: state.currentUser.username,
-        userId: state.currentUser.id,
-        role: state.currentUser.role
-      }));
-    });
-
-    conn.on('data', (raw) => {
-      try {
-        const data = JSON.parse(raw);
-        handleClientIncomingData(data);
-      } catch (e) {
-        console.error('Error parsing client data:', e);
-      }
-    });
-
-    conn.on('close', () => {
-      if(!multiplayer.kicked) alert('Se ha perdido la conexión con la partida.');
-      window.location.reload();
-    });
-
-    conn.on('error', (err) => {
-      console.error('Connection error:', err);
-      document.getElementById('joinStatus').textContent = 'Error de conexión.';
-    });
-  });
-
-  multiplayer.peer.on('error', (err) => {
-    console.error('Peer error:', err);
-    document.getElementById('joinStatus').textContent = 'No se encontró la partida o el código es inválido.';
-  });
+  multiplayer.kicked = false;
+  connectClientToHost(targetId,false);
 }
 
 function handleClientIncomingData(data) {
@@ -7697,12 +8210,36 @@ function handleClientIncomingData(data) {
     }
   }
   else if (data.type === 'start_game') {
+    const code = data.code || multiplayer.reconnectCode || document.getElementById('joinGameCode').value.trim().toUpperCase();
     document.getElementById('gameSelectionScreen').classList.add('hidden');
     
     document.getElementById('headerGameCodeBadge').style.display = 'flex';
-    document.getElementById('headerGameCodeVal').textContent = data.code || document.getElementById('joinGameCode').value.trim().toUpperCase();
+    document.getElementById('headerGameCodeVal').textContent = code;
+    setConnectionStatus('connected','Conectado');
 
+    const app = document.getElementById('mainApp');
+    if (app && app.style.display !== 'none') return;
     launchApp();
+  }
+  else if (data.type === 'join_pending') {
+    setConnectionStatus('waiting','Esperando aprobación...');
+    const joinStatus=document.getElementById('joinStatus');
+    if(joinStatus) joinStatus.textContent = data.message || 'Solicitud enviada. Esperando aprobación del Dungeon Master.';
+  }
+  else if (data.type === 'join_accepted') {
+    setConnectionStatus('connected','Aprobado');
+    const joinStatus=document.getElementById('joinStatus');
+    if(joinStatus) joinStatus.textContent = data.message || 'Ingreso aprobado.';
+  }
+  else if (data.type === 'join_rejected') {
+    multiplayer.kicked = true;
+    multiplayer.active = false;
+    clearTimeout(multiplayer.reconnectTimer);
+    setConnectionStatus('offline','Ingreso rechazado');
+    const joinStatus=document.getElementById('joinStatus');
+    if(joinStatus) joinStatus.textContent = data.reason || 'El Dungeon Master rechazó tu ingreso a la sala.';
+    alert(data.reason || 'El Dungeon Master rechazó tu ingreso a la sala.');
+    try { multiplayer.conn?.close(); } catch(e) {}
   }
   else if (data.type === 'kicked') {
     multiplayer.kicked = true;
