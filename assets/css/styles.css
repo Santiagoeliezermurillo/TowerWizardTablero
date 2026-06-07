@@ -112,7 +112,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html {
   height: 100%;
-  font-size: clamp(14px, 0.35vw + 13px, 16px);
+  font-size: clamp(14px, 0.72vw + 11px, 16px);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   color-scheme: dark;
@@ -127,67 +127,47 @@ body {
     radial-gradient(ellipse at 50% 50%, rgba(30,10,60,0.8) 0%, transparent 80%);
   color: var(--text-1);
   display: flex; flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
 }
 button { cursor: pointer; border: none; font-family: inherit; }
-button,
-input,
-select,
-textarea { font: inherit; }
-button,
-.btn-primary,
-.btn-secondary,
-.btn-danger,
-.btn-auth,
-input,
-select,
-textarea {
+button, input, select, textarea {
+  font: inherit;
+  max-width: 100%;
+}
+button, select, input[type="button"], input[type="submit"] {
   min-height: 40px;
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-[tabindex]:focus-visible {
-  outline: 3px solid rgba(250,204,21,0.95);
+img, canvas, svg, video { max-width: 100%; }
+:focus-visible {
+  outline: 3px solid var(--gold);
   outline-offset: 3px;
-  box-shadow: 0 0 0 6px rgba(250,204,21,0.18);
+  box-shadow: 0 0 0 6px rgba(245,158,11,0.16);
 }
-img, svg, canvas { max-width: 100%; }
 .skip-link {
-  position:fixed;
-  left:12px;
-  top:12px;
-  z-index:10000;
-  transform:translateY(-160%);
-  padding:10px 14px;
-  border-radius:999px;
-  background:#fff7ed;
-  color:#1f1200;
-  font-weight:900;
-  text-decoration:none;
-  box-shadow:0 10px 30px rgba(0,0,0,0.35);
-  transition:transform var(--trans);
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 10000;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--gold);
+  color: #160b03;
+  font-weight: 900;
+  transform: translateY(-150%);
+  transition: transform var(--trans);
 }
-.skip-link:focus { transform:translateY(0); }
+.skip-link:focus { transform: translateY(0); }
 @media (pointer: coarse) {
-  button,
-  .btn-primary,
-  .btn-secondary,
-  .btn-danger,
-  .btn-auth,
-  input,
-  select,
-  textarea {
+  button, select, input[type="button"], input[type="submit"] {
     min-height: 44px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
@@ -196,21 +176,16 @@ img, svg, canvas { max-width: 100%; }
 }
 @media (prefers-contrast: more) {
   :root {
-    --text-1:#ffffff;
-    --text-2:#efe7ff;
-    --text-3:#d8c9ff;
-    --glass-border:rgba(255,255,255,0.34);
-    --glass-border-h:rgba(255,255,255,0.62);
+    --text-2: #ded4ff;
+    --text-3: #c8b8ff;
+    --glass-border: rgba(214,190,255,0.36);
+    --glass-border-h: rgba(245,230,255,0.62);
   }
-  .glass,
-  .modal,
-  .map-session-panel,
-  .inventory-category-section,
-  .inv-item-card,
-  .enemy-card {
-    border-width:2px;
+  .glass, .glass-card, input, select, textarea, button {
+    border-color: var(--glass-border-h) !important;
   }
 }
+input, select, textarea { font-family: inherit; }
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(168,85,247,0.3); border-radius: 10px; }
@@ -2623,321 +2598,439 @@ header {
 }
 
 /* ===================== ACCESSIBLE RESPONSIVE LAYOUT ===================== */
-#mainApp,
-.page,
-.mapa-layout,
-.char-page-layout,
-.inv-page-layout,
-.spell-page-layout,
-.ataque-page-layout,
-.manual-page-layout {
+#mainApp {
   min-width: 0;
   min-height: 0;
 }
 
+#mainApp > header,
+.header-right,
+.nav-tabs,
+.dice-icons-row,
+.dice-controls-row,
+.map-toolbar,
+.bottom-tools-row,
+.map-tools-secondary,
+.session-tabs,
+.quick-combat-header,
+.inventory-category-header {
+  min-width: 0;
+}
+
+.page,
+.map-wrap,
+.map-area,
+.side-panel,
+.chat-messages,
+.modal,
+.auth-container,
+.char-page-layout,
+.inventory-page-layout,
+.resource-layout,
+.manual-layout {
+  min-width: 0;
+}
+
+.map-wrap,
+.map-area,
+.canvas-container,
+#mapCanvas {
+  touch-action: none;
+}
+
+.side-panel,
+.chat-messages,
+.auth-container,
+.modal,
+.weather-panel,
+.quick-combat-panel,
+.map-session-panel {
+  overscroll-behavior: contain;
+}
+
+.nav-tabs button,
+.toolbar-btn,
+.weather-opt,
+.dice-roll-btn,
+.dice-clear-btn,
+.btn-auth,
+.btn-small,
+.btn-logout {
+  white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
-  header {
-    height:auto;
-    min-height:64px;
-    flex-wrap:wrap;
-    align-items:center;
-    gap:10px 14px;
-    padding:10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+  #mainApp > header {
+    height: auto;
+    min-height: 68px;
+    padding: 8px 12px;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-content: center;
   }
-  .logo { flex:0 0 auto; }
-  .header-right {
-    flex:1 1 360px;
-    justify-content:flex-end;
-    flex-wrap:wrap;
-    gap:8px;
-    min-width:0;
+
+  .logo {
+    flex: 0 0 auto;
   }
+
   .nav-tabs {
-    order:3;
-    width:100%;
-    height:auto;
-    overflow-x:auto;
-    overflow-y:hidden;
-    padding:2px 0 4px;
-    scroll-snap-type:x proximity;
-    scrollbar-width:thin;
+    flex: 1 1 420px;
+    order: 3;
+    width: 100%;
+    height: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 0 2px;
+    scrollbar-width: thin;
   }
+
   .nav-tabs button {
-    flex:0 0 auto;
-    min-height:44px;
-    scroll-snap-align:start;
-    padding:8px 14px;
+    flex: 0 0 auto;
+    padding: 9px 14px;
   }
-  #mainApp.resources-view,
-  #mainApp.inventory-view {
-    padding:14px;
+
+  .header-right {
+    flex: 1 1 420px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .volume-control,
+  .user-badge,
+  .game-code-badge {
+    min-height: 40px;
   }
 }
 
 @media (max-width: 900px) {
-  body { overflow:hidden; }
+  body {
+    overflow: hidden;
+  }
+
+  #authScreen,
+  #gameSelectionScreen {
+    align-items: stretch;
+    padding: max(14px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    overflow-y: auto;
+  }
+
   .auth-container {
-    width:min(440px, calc(100vw - 24px));
-    max-height:calc(100dvh - 24px);
-    overflow-y:auto;
-    padding:34px 24px;
+    width: min(100%, 520px);
+    max-height: none;
+    margin: auto;
   }
-  .map-wrap { padding-top:102px; }
+
+  #mainApp > header {
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
+
+  .header-right {
+    justify-content: flex-start;
+  }
+
+  .volume-control {
+    flex: 1 1 150px;
+    justify-content: center;
+  }
+
+  .user-badge {
+    flex: 1 1 auto;
+  }
+
+  .map-wrap {
+    min-height: 0;
+  }
+
   .map-toolbar {
-    left:8px;
-    right:8px;
-    top:8px;
-    width:auto;
-    max-width:none;
-    flex-wrap:nowrap;
-    overflow-x:auto;
-    overflow-y:hidden;
-    padding:8px;
-    scrollbar-width:thin;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    width: auto;
+    max-width: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    justify-content: flex-start;
+    scrollbar-width: thin;
   }
-  .map-toolbar button { flex:0 0 auto; }
-  .map-session-dock {
-    top:104px;
-    right:8px;
+
+  .toolbar-btn {
+    flex: 0 0 auto;
+    min-width: 112px;
+    justify-content: center;
   }
-  .map-session-panel {
-    width:calc(100vw - 16px);
-    max-height:calc(100dvh - 250px);
-  }
-  .map-quick-tools {
-    right:8px;
-    left:8px;
-    top:auto;
-    bottom:10px;
-    transform:none;
-    flex-direction:row;
-    overflow-x:auto;
-    overflow-y:hidden;
-    justify-content:flex-start;
-    max-width:none;
-    scrollbar-width:thin;
-  }
-  .map-left-tools {
-    left:8px;
-    top:112px;
-    transform:none;
-  }
+
   .weather-panel {
-    left:8px !important;
-    right:8px;
-    top:112px;
-    width:auto !important;
-    max-height:calc(100dvh - 245px);
-    overflow-y:auto;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    top: 74px;
+    width: auto;
+    min-width: 0;
+    max-height: min(68dvh, 560px);
+    overflow-y: auto;
   }
-  .map-bottom-bar {
-    padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+
+  .weather-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .dice-icons-row {
-    overflow-x:auto;
-    padding-bottom:4px;
-    scrollbar-width:thin;
+
+  .panel-volume-control {
+    grid-template-columns: minmax(74px, 1fr) 34px 44px 34px 36px;
   }
-  .dice-icon-btn { flex:0 0 auto; min-width:44px; min-height:44px; }
-  .dice-controls-row {
-    flex-wrap:wrap;
-    gap:8px;
+
+  .map-session-dock {
+    right: max(8px, env(safe-area-inset-right));
+    top: 82px;
   }
-  .dice-formula-wrapper {
-    flex:1 1 100%;
-    max-width:none;
+
+  .map-session-panel {
+    width: calc(100vw - 20px);
+    max-height: min(62dvh, 540px);
   }
+
+  .left-map-tools {
+    left: max(8px, env(safe-area-inset-left));
+    top: 88px;
+  }
+
+  .quick-combat-dock {
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .quick-combat-panel {
+    width: 100%;
+    max-height: min(58dvh, 520px);
+  }
+
+  .dice-bar,
+  .dice-panel,
+  .bottom-tools-row,
+  .map-tools-secondary {
+    width: 100%;
+  }
+
+  .dice-bar {
+    padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .dice-icons-row,
+  .dice-controls-row,
+  .bottom-tools-row,
+  .map-tools-secondary {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .dice-icon-btn,
   .dice-roll-btn,
-  .dice-clear-btn {
-    flex:1 1 130px;
-    justify-content:center;
+  .dice-clear-btn,
+  .tool-action-btn {
+    flex: 0 0 auto;
   }
-  .roll-result-display {
-    flex:0 0 auto;
-    min-width:76px;
+
+  .dice-formula-wrapper {
+    flex: 1 0 190px;
   }
+
+  #sessionPanel {
+    width: calc(100vw - 24px);
+    max-height: min(68dvh, 560px);
+  }
+
   #mainApp.resources-view,
   #mainApp.inventory-view {
-    padding:10px;
-    gap:12px;
+    padding: 10px;
+    gap: 10px;
   }
+
   #mainApp.resources-view > .page.active,
   #mainApp.inventory-view > .page.active {
-    border-radius:14px;
-    overflow:hidden;
+    width: 100%;
   }
-  #mainApp.resources-view .char-page-layout,
-  #mainApp.inventory-view .inv-page-layout,
-  #mainApp.inventory-view .spell-page-layout,
-  #mainApp.inventory-view .ataque-page-layout,
+
   .char-page-layout,
-  .inv-page-layout,
-  .spell-page-layout,
-  .ataque-page-layout,
-  .manual-page-layout {
-    grid-template-columns:1fr !important;
-    min-height:auto !important;
-    overflow:visible;
+  .inventory-page-layout,
+  .resource-layout,
+  .manual-layout,
+  .enemy-layout,
+  .npc-layout,
+  .party-layout {
+    grid-template-columns: 1fr !important;
   }
-  .char-selector-bar,
-  .manual-library-sidebar {
-    max-height:310px;
-    border-right:0;
-    border-bottom:1px solid var(--glass-border);
-  }
+
   .char-detail,
-  #mainApp.resources-view .char-detail {
-    grid-template-columns:1fr !important;
-    min-height:auto !important;
-    overflow:visible;
+  .char-main-grid,
+  .inventory-main-grid,
+  .manual-main-grid,
+  .enemy-main-grid,
+  .npc-main-grid {
+    grid-template-columns: 1fr !important;
   }
-  .char-portrait-area,
-  .inv-portrait-area,
-  .spell-portrait-area,
-  .ataque-portrait-area {
-    min-height:360px;
-    grid-column:auto !important;
-    order:0;
+
+  .char-portrait-area {
+    grid-column: auto !important;
+    order: -1;
+    min-height: 260px;
   }
+
   .char-stats-panel,
-  .inv-items-panel,
-  .spellbook-panel,
-  .arsenal-panel,
-  .manual-editor-panel {
-    border-left:0 !important;
-    border-right:0 !important;
-    border-top:1px solid var(--glass-border);
-    overflow:visible;
+  .character-vision-card,
+  .inventory-category-grid,
+  .coin-controls,
+  .enemy-form-grid,
+  .npc-form-grid,
+  .scene-create-row,
+  .external-music-sync {
+    grid-template-columns: 1fr !important;
   }
-  .enemy-page-layout,
-  .partida-layout {
-    padding:18px;
+
+  .char-sidebar,
+  .inventory-sidebar,
+  .manual-sidebar,
+  .enemy-sidebar,
+  .npc-sidebar {
+    max-height: 42dvh;
+    overflow-y: auto;
   }
-  .enemy-library-header {
-    flex-direction:column;
-    align-items:stretch;
-  }
-  .enemy-import-actions,
-  .manual-editor-header,
-  .manual-editor-actions,
-  .inv-section-header,
-  .spell-section-header {
-    flex-wrap:wrap;
-  }
-  .enemy-create-panel,
-  .enemy-create-stats {
-    grid-template-columns:1fr !important;
-  }
-  .enemy-library-grid {
-    grid-template-columns:repeat(auto-fill,minmax(190px,1fr)) !important;
-  }
+
   .modal-overlay {
-    align-items:flex-start;
-    padding:max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-    overflow-y:auto;
+    align-items: stretch;
+    padding: max(12px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
+
   .modal {
-    width:100%;
-    max-height:calc(100dvh - 24px);
+    width: 100%;
+    max-width: 720px;
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    overflow-y: auto;
   }
+
+  .modal .form-row,
   .form-row {
-    flex-direction:column;
-    gap:12px;
+    grid-template-columns: 1fr !important;
   }
 }
 
 @media (max-width: 620px) {
-  header {
-    padding:8px 10px;
+  html {
+    font-size: 14px;
   }
+
+  #mainApp > header {
+    padding: 8px;
+  }
+
   .logo {
-    font-size:1.25rem;
+    font-size: 1.35rem;
   }
-  .header-right {
-    flex:1 1 100%;
-    justify-content:flex-start;
-  }
-  .volume-control,
-  .user-badge,
-  .game-code-badge {
-    max-width:100%;
-  }
-  .volume-control span,
-  .user-badge span,
-  .game-code-badge {
-    font-size:0.75rem !important;
-  }
+
   .nav-tabs button {
-    padding:8px 10px;
-    font-size:0.72rem;
-    letter-spacing:0.6px;
+    padding: 8px 11px;
+    font-size: 0.78rem;
   }
-  .map-wrap { padding-top:98px; }
-  .map-toolbar button {
-    padding:8px 10px;
-    font-size:0.72rem;
+
+  .tab-label,
+  .toolbar-btn span:not(.tool-icon) {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .map-session-toggle {
-    max-width:calc(100vw - 16px);
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+
+  .header-right {
+    width: 100%;
   }
+
+  .volume-control {
+    flex: 1 1 100%;
+  }
+
+  .map-toolbar {
+    top: 8px;
+  }
+
+  .toolbar-btn {
+    min-width: 96px;
+    padding: 8px 10px;
+    font-size: 0.76rem;
+  }
+
+  .weather-options {
+    grid-template-columns: 1fr;
+  }
+
+  .dice-controls-row {
+    flex-wrap: nowrap;
+  }
+
+  .dice-roll-btn,
+  .dice-clear-btn {
+    padding-inline: 12px;
+  }
+
+  .roll-result-display {
+    min-width: 48px;
+    font-size: 1.25rem;
+  }
+
   .chat-input-row,
-  .partida-row,
-  .save-item {
-    flex-direction:column;
-    align-items:stretch;
+  .save-create-row,
+  .initiative-actions,
+  .quick-combat-actions,
+  .inventory-item-row,
+  .scene-list-item {
+    grid-template-columns: 1fr !important;
   }
-  .save-actions,
-  .chat-input-row button,
-  .partida-row button,
-  .partida-row input {
-    width:100%;
+
+  .modal-footer,
+  .form-actions,
+  .scene-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .inv-item-card,
-  .spell-entry {
-    flex-wrap:wrap;
-    align-items:flex-start;
-  }
-  .inv-item-actions {
-    width:100%;
-    justify-content:flex-start;
-    flex-wrap:wrap;
-  }
-  .character-skill-fields {
-    grid-template-columns:1fr;
-  }
-  .modal-header,
-  .modal-body,
-  .modal-footer {
-    padding-left:16px;
-    padding-right:16px;
-  }
-  .modal-footer {
-    flex-direction:column-reverse;
-  }
-  .modal-footer button {
-    width:100%;
+
+  .char-portrait-area {
+    min-height: 220px;
   }
 }
 
 @media (max-width: 420px) {
-  .auth-container { padding:26px 18px; }
-  .auth-logo { font-size:1.45rem; }
-  .dice-controls-row { gap:6px; }
+  .auth-container {
+    padding: 18px 14px;
+  }
+
+  .auth-logo {
+    font-size: 1.7rem;
+  }
+
+  .nav-tabs button {
+    min-width: 88px;
+  }
+
+  .dice-controls-row {
+    flex-wrap: wrap;
+  }
+
+  .dice-formula-wrapper {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
   .dice-roll-btn,
   .dice-clear-btn,
   .roll-result-display {
-    flex:1 1 100%;
+    flex: 1 1 auto;
   }
-  .char-portrait-area,
-  .inv-portrait-area,
-  .spell-portrait-area,
-  .ataque-portrait-area {
-    min-height:310px;
+
+  .panel-volume-control {
+    grid-template-columns: 1fr 34px 42px 34px;
   }
-  .enemy-library-grid {
-    grid-template-columns:1fr !important;
+
+  .panel-volume-control button:last-child {
+    grid-column: 1 / -1;
   }
 }

@@ -525,13 +525,12 @@ function switchPage(pg) {
     document.getElementById('page-hechizos')?.classList.add('active');
     document.getElementById('page-ataque')?.classList.add('active');
   } else {
-    document.getElementById(`page-${pg}`).classList.add('active');
+    document.getElementById(`page-${pg}`)?.classList.add('active');
   }
   renderPageContent(pg);
   updateNavAccessibility();
   if(pg==='mapa') setTimeout(()=>{ resizeCanvas(); drawMap(); }, 50);
 }
-let navTabsReady = false;
 function updateNavAccessibility() {
   const nav=document.getElementById('mainNavTabs');
   if(nav) nav.setAttribute('role','tablist');
@@ -548,6 +547,7 @@ function updateNavAccessibility() {
     page.setAttribute('aria-hidden', page.classList.contains('active') ? 'false' : 'true');
   });
 }
+let navTabsReady = false;
 function setupNavTabs() {
   if(navTabsReady) return;
   navTabsReady = true;
