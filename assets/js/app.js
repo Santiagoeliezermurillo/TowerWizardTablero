@@ -173,6 +173,9 @@ function saveCombatantSheet(c) {
   if(c.type === 'enemy' || enemies.some(enemy => String(enemy.id) === String(c.id))) saveEnemies();
   else if(c.type === 'npc' || npcs.some(npc => String(npc.id) === String(c.id))) saveNpcs();
   else saveChars();
+  try {
+    if(mapState?.selectedTokenId) renderTokenActionPanel();
+  } catch {}
 }
 
 function ensureCombatLoadout(c) {
@@ -274,19 +277,132 @@ function restorePlayerActiveCharacter() {
     saveLS('crq_active_char_id', null);
   }
 }
+const PERSISTENT_CHARACTER_LIBRARY_KEY = 'crq_persistent_character_library';
+const PERSISTENT_ENEMY_LIBRARY_KEY = 'crq_persistent_enemy_library';
+const PERSISTENT_NPC_LIBRARY_KEY = 'crq_persistent_npc_library';
+
+function getPersistentOwnerId() {
+  return state.currentUser ? String(state.currentUser.id) : null;
+}
+function getPersistentLibrary(key) {
+  const library = loadLS(key, []);
+  return Array.isArray(library) ? library : [];
+}
+function stripPersistentMetadata(record) {
+  const copy = cloneGameData(record);
+  delete copy._persistentKind;
+  delete copy._persistentOwnerId;
+  delete copy._persistentSavedAt;
+  return copy;
+}
+function upsertPersistentRecords(key, records, kind) {
+  const ownerId = getPersistentOwnerId();
+  if(!ownerId || !Array.isArray(records) || records.length === 0) return;
+  const library = getPersistentLibrary(key);
+  let changed = false;
+  records.filter(Boolean).forEach(record => {
+    const saved = cloneGameData(record);
+    saved._persistentKind = kind;
+    saved._persistentOwnerId = ownerId;
+    saved._persistentSavedAt = Date.now();
+    const index = library.findIndex(item =>
+      String(item.id) === String(saved.id) &&
+      String(item._persistentOwnerId) === ownerId &&
+      item._persistentKind === kind
+    );
+    if(index >= 0) library[index] = saved;
+    else library.push(saved);
+    changed = true;
+  });
+  if(changed) saveLS(key, library);
+}
+function removePersistentRecord(key, id) {
+  const ownerId = getPersistentOwnerId();
+  if(!ownerId) return;
+  const library = getPersistentLibrary(key);
+  const next = library.filter(item => !(String(item.id) === String(id) && String(item._persistentOwnerId) === ownerId));
+  if(next.length !== library.length) saveLS(key, next);
+}
+function shouldArchiveCharacter(c) {
+  if(!state.currentUser || !c || c.type !== 'player') return false;
+  return isDM() || String(c.userId) === String(state.currentUser.id);
+}
+function archivePersistentLibrarySnapshot() {
+  if(!state.currentUser) return;
+  upsertPersistentRecords(PERSISTENT_CHARACTER_LIBRARY_KEY, characters.filter(shouldArchiveCharacter), 'character');
+  if(isDM()) {
+    upsertPersistentRecords(PERSISTENT_ENEMY_LIBRARY_KEY, enemies, 'enemy');
+    upsertPersistentRecords(PERSISTENT_NPC_LIBRARY_KEY, npcs, 'npc');
+  }
+}
+function getOwnedPersistentRecords(key, kind) {
+  const ownerId = getPersistentOwnerId();
+  if(!ownerId) return [];
+  return getPersistentLibrary(key)
+    .filter(item => item && item._persistentKind === kind && String(item._persistentOwnerId) === ownerId)
+    .map(stripPersistentMetadata);
+}
+function mergePersistentRecordsIntoCollection(collection, records, prepareRecord) {
+  let changed = false;
+  records.forEach(record => {
+    if(!record || collection.some(item => String(item.id) === String(record.id))) return;
+    const prepared = prepareRecord ? prepareRecord(record) : record;
+    collection.push(prepared);
+    changed = true;
+  });
+  return changed;
+}
+function syncPersistentLibraryIntoCampaign(options = {}) {
+  if(!state.currentUser) return false;
+  if(options.archive !== false) archivePersistentLibrarySnapshot();
+  let charsChanged = false;
+  let enemiesChanged = false;
+  let npcsChanged = false;
+  const persistentCharacters = getOwnedPersistentRecords(PERSISTENT_CHARACTER_LIBRARY_KEY, 'character');
+  charsChanged = mergePersistentRecordsIntoCollection(characters, persistentCharacters, record => {
+    record.type = 'player';
+    if(!isDM()) record.userId = state.currentUser.id;
+    ensureCombatLoadout(record);
+    normalizeCharacterVision(record);
+    return record;
+  });
+  if(isDM()) {
+    enemiesChanged = mergePersistentRecordsIntoCollection(enemies, getOwnedPersistentRecords(PERSISTENT_ENEMY_LIBRARY_KEY, 'enemy'), record => {
+      record.type = 'enemy';
+      ensureCombatLoadout(record);
+      return record;
+    });
+    npcsChanged = mergePersistentRecordsIntoCollection(npcs, getOwnedPersistentRecords(PERSISTENT_NPC_LIBRARY_KEY, 'npc'), record => normalizeNpcRecord(record));
+  }
+  if(charsChanged) saveLS('crq_chars', characters);
+  if(enemiesChanged) saveLS('crq_enemies', enemies);
+  if(npcsChanged) saveLS('crq_npcs', npcs);
+  if(charsChanged || enemiesChanged || npcsChanged) {
+    combatants = getInitiativeCombatants();
+    if(options.broadcast && typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
+      if(charsChanged) multiplayer.broadcast({ type:'characters_update', characters });
+      if(enemiesChanged) multiplayer.broadcast({ type:'enemies_update', enemies });
+      if(npcsChanged) multiplayer.broadcast({ type:'npcs_update', npcs });
+    }
+  }
+  return charsChanged || enemiesChanged || npcsChanged;
+}
 function saveChars() {
+  upsertPersistentRecords(PERSISTENT_CHARACTER_LIBRARY_KEY, characters.filter(shouldArchiveCharacter), 'character');
   saveLS('crq_chars', characters);
   if (typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
     multiplayer.broadcast({ type: 'characters_update', characters });
   }
 }
 function saveEnemies() {
+  if(isDM()) upsertPersistentRecords(PERSISTENT_ENEMY_LIBRARY_KEY, enemies, 'enemy');
   saveLS('crq_enemies', enemies);
   if (typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
     multiplayer.broadcast({ type: 'enemies_update', enemies });
   }
 }
 function saveNpcs() {
+  if(isDM()) upsertPersistentRecords(PERSISTENT_NPC_LIBRARY_KEY, npcs, 'npc');
   saveLS('crq_npcs', npcs);
   if (typeof multiplayer !== 'undefined' && multiplayer.isActive()) {
     multiplayer.broadcast({ type: 'npcs_update', npcs });
@@ -414,6 +530,7 @@ function launchApp() {
   if(recursosTab) recursosTab.textContent = isAdmin ? 'Recursos' : 'Ficha de personaje';
   const charHeader = document.querySelector('.char-selector-header span');
   if(charHeader) charHeader.textContent = isAdmin ? 'Personajes' : 'Mi ficha';
+  syncPersistentLibraryIntoCampaign();
   restorePlayerActiveCharacter();
   updateCharacterCreateButton();
   document.getElementById('btnAddItem').style.display = 'none';
@@ -474,9 +591,11 @@ let activeSessionTab = 'log';
 function toggleSessionDock(forceOpen) {
   const panel = document.getElementById('mapSessionPanel');
   const toggle = document.getElementById('mapSessionToggle');
+  const mapWrap = document.querySelector('#page-mapa .map-wrap');
   if(!panel) return;
   const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : panel.style.display === 'none';
   panel.style.display = shouldOpen ? 'flex' : 'none';
+  mapWrap?.classList.toggle('session-dock-open', shouldOpen);
   if(toggle) {
     toggle.classList.toggle('open', shouldOpen);
     toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
@@ -642,7 +761,6 @@ function renderQuickCombatPanel() {
   if(!panel) return;
   const c = getQuickCombatCharacter();
   ensureCombatLoadout(c);
-  const canEdit = canEditCharacter(c);
   if(!c) {
     panel.innerHTML = `
       <div class="quick-combat-header">
@@ -666,8 +784,6 @@ function renderQuickCombatPanel() {
     </div>
     <div class="quick-combat-body">
       <div class="quick-combat-actions">
-        ${canEdit ? '<button id="quickCombatAddAttack" type="button">+ Ataque</button>' : ''}
-        ${canEdit ? '<button id="quickCombatAddSpell" type="button">+ Hechizo</button>' : ''}
         ${c.type === 'enemy' ? '<button id="quickCombatOpenInventory" type="button">Ver solapa enemiga</button>' : '<button id="quickCombatOpenInventory" type="button">Abrir inventario</button>'}
       </div>
       <section>
@@ -681,7 +797,7 @@ function renderQuickCombatPanel() {
                 <div class="quick-combat-meta">${escapeHTML(atk.type)}${atk.damage ? ` · Daño ${escapeHTML(atk.damage)}` : ''}</div>
               </div>
               <button class="quick-combat-use" type="button" data-quick-attack="${idx}">Atacar</button>
-            </div>`).join('') : '<div class="quick-combat-empty">Sin ataques agregados. Usa + Ataque para crear acciones de combate.</div>'}
+            </div>`).join('') : '<div class="quick-combat-empty">Sin ataques agregados. Agrega ataques desde su ficha o inventario.</div>'}
         </div>
       </section>
       <section>
@@ -700,8 +816,6 @@ function renderQuickCombatPanel() {
       </section>
     </div>`;
 
-  panel.querySelector('#quickCombatAddAttack')?.addEventListener('click', () => openAddAttackModal(c.id));
-  panel.querySelector('#quickCombatAddSpell')?.addEventListener('click', () => openAddSpellModal(c.id));
   panel.querySelector('#quickCombatOpenInventory')?.addEventListener('click', () => {
     if(c.type === 'enemy') {
       openEnemyLoadout(c.id, 'inventory');
@@ -747,11 +861,6 @@ function renderEnemiesPage() {
     ensureCombatLoadout(enemy);
     const tokenCount=mapState.tokens.filter(token=>String(token.id)===String(enemy.id)).length;
     const onMap=tokenCount>0;
-    const safeId=encodeInline(enemy.id);
-    const isLoadoutOpen=String(enemyLoadoutState.id)===String(enemy.id);
-    const attr={str:10,dex:10,con:10,int:10,wis:10,cha:10,...(enemy.attributes||{})};
-    const statBoxes=Object.entries({FUE:attr.str,DES:attr.dex,CON:attr.con,INT:attr.int,SAB:attr.wis,CAR:attr.cha})
-      .map(([label,value])=>`<div class="enemy-card-stat">${label}<strong>${value}</strong></div>`).join('');
     const portrait=enemy.portrait
       ? `<img src="${enemy.portrait}" alt="${escapeHTML(enemy.name)}">`
       : `<div class="enemy-card-initials" style="color:${enemy.color};">${escapeHTML(enemy.initials||initials(enemy.name))}</div>`;
@@ -759,21 +868,14 @@ function renderEnemiesPage() {
       <div class="enemy-card-image">${portrait}</div>
       <div class="enemy-card-body">
         <div class="enemy-card-title">${escapeHTML(enemy.name)}</div>
-        <div class="enemy-card-meta">❤️ ${enemy.hp} / ${enemy.maxHp} · 🛡 CA ${enemy.ac??12} · 🎲 Iniciativa ${enemy.initiative||0} · 🧩 ${tokenCount} tokens · ⭐ ${enemy.xp??0} PX</div>
-        <div class="enemy-card-stats">${statBoxes}</div>
+        <div class="enemy-card-meta">${tokenCount} token${tokenCount===1?'':'s'} en el tablero</div>
         <div class="enemy-card-actions">
           <button class="enemy-token-btn ${onMap?'on-map':''}" onclick="toggleEnemyMapToken('${enemy.id}')">${onMap?`✕ Quitar uno (${tokenCount})`:'＋ Poner token'}</button>
           <button class="enemy-duplicate-btn" onclick="duplicateEnemyToken('${enemy.id}')" title="Duplicar token">Duplicar</button>
           <button class="enemy-edit-btn" onclick="editEnemy('${enemy.id}')" title="Editar ficha">✎</button>
           <button class="enemy-delete-btn" onclick="deleteEnemy('${enemy.id}')" title="Eliminar enemigo">✕</button>
         </div>
-        <div class="enemy-loadout-actions">
-          <button onclick="openQuickCombatForActor(decodeURIComponent('${safeId}'))">Combate rápido</button>
-          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','attacks')">Ataques</button>
-          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','spells')">Hechizos</button>
-          <button class="${isLoadoutOpen?'active':''}" onclick="openEnemyLoadout('${safeId}','inventory')">Inventario</button>
-        </div>
-        ${isLoadoutOpen ? renderEnemyLoadoutPanel(enemy) : ''}
+        ${renderEnemyLoadoutPanel(enemy)}
       </div>
     </article>`;
   }).join('');
@@ -793,7 +895,7 @@ function openEnemyLoadout(enemyIdEncoded, tab='attacks') {
 function renderEnemyLoadoutPanel(enemy) {
   ensureCombatLoadout(enemy);
   const safeId=encodeInline(enemy.id);
-  const active=enemyLoadoutState.tab || 'attacks';
+  const active=String(enemyLoadoutState.id)===String(enemy.id) ? (enemyLoadoutState.tab || 'attacks') : 'attacks';
   const tabs=`<div class="enemy-loadout-tabs">
     <button class="${active==='attacks'?'active':''}" onclick="openEnemyLoadout('${safeId}','attacks')">Ataques</button>
     <button class="${active==='spells'?'active':''}" onclick="openEnemyLoadout('${safeId}','spells')">Hechizos</button>
@@ -888,6 +990,9 @@ function getEnemyFormDetails() {
 }
 function resetEnemyForm() {
   enemyEditingId=null;
+  document.querySelector('#page-enemigos .enemy-create-panel')?.classList.remove('active');
+  const title=document.getElementById('enemyEditorTitle');
+  if(title) title.textContent='Crear enemigo';
   document.getElementById('newEnemyName').value='';
   document.getElementById('newEnemyHp').value='20';
   document.getElementById('newEnemyAc').value='12';
@@ -898,12 +1003,27 @@ function resetEnemyForm() {
   document.getElementById('enemySaveButton').textContent='＋ Crear enemigo';
   document.getElementById('enemyCancelEditButton').style.display='none';
 }
+function openEnemyEditorModal() {
+  if(!isDM()) return;
+  resetEnemyForm();
+  const panel=document.querySelector('#page-enemigos .enemy-create-panel');
+  if(!panel) return;
+  panel.classList.add('active');
+  const cancel=document.getElementById('enemyCancelEditButton');
+  if(cancel) {
+    cancel.textContent='Cancelar';
+    cancel.style.display='';
+  }
+  setTimeout(()=>document.getElementById('newEnemyName')?.focus(),0);
+}
 function editEnemy(enemyId) {
   if(!isDM()) return;
   const enemy=enemies.find(item=>item.id===enemyId);
   if(!enemy) return;
   const attr={str:10,dex:10,con:10,int:10,wis:10,cha:10,...(enemy.attributes||{})};
   enemyEditingId=enemyId;
+  const title=document.getElementById('enemyEditorTitle');
+  if(title) title.textContent='Editar enemigo';
   document.getElementById('newEnemyName').value=enemy.name;
   document.getElementById('newEnemyHp').value=enemy.maxHp||enemy.hp||20;
   document.getElementById('newEnemyAc').value=enemy.ac??12;
@@ -913,7 +1033,9 @@ function editEnemy(enemyId) {
     .forEach(([stat,value])=>{ document.getElementById(`newEnemy${stat}`).value=value; });
   document.getElementById('enemySaveButton').textContent='✓ Guardar ficha';
   document.getElementById('enemyCancelEditButton').style.display='';
-  document.querySelector('.enemy-create-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+  const panel=document.querySelector('#page-enemigos .enemy-create-panel');
+  if(panel) panel.classList.add('active');
+  setTimeout(()=>document.getElementById('newEnemyName')?.focus(),0);
 }
 function addEnemyFromForm() {
   if(!isDM()) return;
@@ -977,6 +1099,7 @@ function deleteEnemy(enemyId) {
   mapState.tokens=mapState.tokens.filter(token=>token.id!==enemyId);
   maps.forEach(map=>{ map.tokens=(map.tokens||[]).filter(token=>token.id!==enemyId); });
   delete imageCache[enemyId];
+  removePersistentRecord(PERSISTENT_ENEMY_LIBRARY_KEY, enemyId);
   combatants=getInitiativeCombatants();
   saveEnemies();
   saveMaps();
@@ -1006,18 +1129,14 @@ function renderNpcPage() {
   grid.innerHTML=npcs.map(npc=>{
     const tokenCount=mapState.tokens.filter(token=>String(token.id)===String(npc.id)).length;
     const onMap=tokenCount>0;
-    const attr={str:10,dex:10,con:10,int:10,wis:10,cha:10,...(npc.attributes||{})};
-    const statBoxes=Object.entries({FUE:attr.str,DES:attr.dex,CON:attr.con,INT:attr.int,SAB:attr.wis,CAR:attr.cha})
-      .map(([label,value])=>`<div class="enemy-card-stat">${label}<strong>${value}</strong></div>`).join('');
     const portrait=npc.portrait
       ? `<img src="${npc.portrait}" alt="${escapeHTML(npc.name)}">`
       : `<div class="enemy-card-initials" style="color:${npc.color};">${escapeHTML(npc.initials||initials(npc.name))}</div>`;
     return `<article class="enemy-card npc-card">
-      <div class="enemy-card-image">${portrait}</div>
+        <div class="enemy-card-image">${portrait}</div>
       <div class="enemy-card-body">
         <div class="enemy-card-title">${escapeHTML(npc.name)}</div>
-        <div class="enemy-card-meta">❤ ${npc.hp} / ${npc.maxHp} · CA ${npc.ac??10} · Iniciativa ${npc.initiative||0} · ${escapeHTML(npc.role||'NPC')} · ${tokenCount} tokens</div>
-        <div class="enemy-card-stats">${statBoxes}</div>
+        <div class="enemy-card-meta">${tokenCount} token${tokenCount===1?'':'s'} en el tablero</div>
         <div class="enemy-card-actions">
           <button class="enemy-token-btn ${onMap?'on-map':''}" onclick="toggleNpcMapToken('${npc.id}')">${onMap?`✕ Quitar uno (${tokenCount})`:'＋ Poner token'}</button>
           <button class="enemy-duplicate-btn" onclick="duplicateNpcToken('${npc.id}')" title="Duplicar token">Duplicar</button>
@@ -1059,6 +1178,9 @@ function getNpcFormDetails() {
 }
 function resetNpcForm() {
   npcEditingId=null;
+  document.querySelector('#page-npc .npc-create-panel')?.classList.remove('active');
+  const title=document.getElementById('npcEditorTitle');
+  if(title) title.textContent='Crear NPC';
   document.getElementById('newNpcName').value='';
   document.getElementById('newNpcHp').value='10';
   document.getElementById('newNpcAc').value='10';
@@ -1069,12 +1191,27 @@ function resetNpcForm() {
   document.getElementById('npcSaveButton').textContent='＋ Crear NPC';
   document.getElementById('npcCancelEditButton').style.display='none';
 }
+function openNpcEditorModal() {
+  if(!isDM()) return;
+  resetNpcForm();
+  const panel=document.querySelector('#page-npc .npc-create-panel');
+  if(!panel) return;
+  panel.classList.add('active');
+  const cancel=document.getElementById('npcCancelEditButton');
+  if(cancel) {
+    cancel.textContent='Cancelar';
+    cancel.style.display='';
+  }
+  setTimeout(()=>document.getElementById('newNpcName')?.focus(),0);
+}
 function editNpc(npcId) {
   if(!isDM()) return;
   const npc=npcs.find(item=>item.id===npcId);
   if(!npc) return;
   const attr={str:10,dex:10,con:10,int:10,wis:10,cha:10,...(npc.attributes||{})};
   npcEditingId=npcId;
+  const title=document.getElementById('npcEditorTitle');
+  if(title) title.textContent='Editar NPC';
   document.getElementById('newNpcName').value=npc.name;
   document.getElementById('newNpcHp').value=npc.maxHp||npc.hp||10;
   document.getElementById('newNpcAc').value=npc.ac??10;
@@ -1084,7 +1221,9 @@ function editNpc(npcId) {
     .forEach(([stat,value])=>{ document.getElementById(`newNpc${stat}`).value=value; });
   document.getElementById('npcSaveButton').textContent='✓ Guardar NPC';
   document.getElementById('npcCancelEditButton').style.display='';
-  document.querySelector('.npc-create-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+  const panel=document.querySelector('#page-npc .npc-create-panel');
+  if(panel) panel.classList.add('active');
+  setTimeout(()=>document.getElementById('newNpcName')?.focus(),0);
 }
 function addNpcFromForm() {
   if(!isDM()) return;
@@ -1149,6 +1288,7 @@ function deleteNpc(npcId) {
   mapState.tokens=mapState.tokens.filter(token=>token.id!==npcId);
   maps.forEach(map=>{ map.tokens=(map.tokens||[]).filter(token=>token.id!==npcId); });
   delete imageCache[npcId];
+  removePersistentRecord(PERSISTENT_NPC_LIBRARY_KEY, npcId);
   rebuildCombatantsByInitiative();
   saveNpcs();
   saveMaps();
@@ -1377,7 +1517,7 @@ function renderPersonajePage() {
     actionsEl.innerHTML = canEditSheet ? `
       <div class="character-level-pill">Nivel <strong>${c.level}</strong></div>
       <button class="btn-sheet-action level-up" onclick="levelUpCharacter(${c.id})">⬆ Subir nivel</button>
-      <button class="btn-sheet-action" onclick="openCharModal(${c.id})">✎ Editar ficha</button>
+      <button class="btn-sheet-action" onclick="openCharModal('${encodeInline(c.id)}')">✎ Editar ficha</button>
       <button class="btn-sheet-action danger" onclick="deleteCharacter('${encodeInline(c.id)}')">✕ Borrar</button>
     ` : '';
   }
@@ -1455,6 +1595,7 @@ function deleteCharacter(charIdEncoded) {
     map.tokens = (map.tokens || []).filter(token => String(token.id) !== String(c.id));
   });
   delete imageCache[c.id];
+  removePersistentRecord(PERSISTENT_CHARACTER_LIBRARY_KEY, c.id);
   saveChars();
   saveMaps();
   combatants = getInitiativeCombatants();
@@ -3642,6 +3783,7 @@ function saveSpellToDM() {
 // ===================================================
 function closeModals() {
   document.querySelectorAll('.modal-overlay').forEach(m=>m.classList.remove('active'));
+  document.querySelectorAll('.enemy-create-panel-minimal.active').forEach(panel=>panel.classList.remove('active'));
   clearMapEditorGridPreview();
   updateTokenPanelAvoidance(false);
 }
@@ -5163,9 +5305,95 @@ function getTokenPortraitMarkup(combatant) {
   if(combatant.portrait) return `<img src="${combatant.portrait}" alt="${escapeHTML(combatant.name||'Token')}">`;
   return `<div class="token-action-initials" style="color:${combatant.color||'#a855f7'};">${escapeHTML(combatant.initials||initials(combatant.name||'TK'))}</div>`;
 }
+function getTokenCurrencyMarkup(combatant) {
+  if(!combatant || combatant.type === 'npc') return '';
+  const copper=Math.max(0,parseInt(combatant.copper)||0);
+  const silver=Math.max(0,parseInt(combatant.silver)||0);
+  const gold=Math.max(0,parseInt(combatant.gold)||0);
+  return `
+    <div class="token-currency-pill currency-copper" title="Monedas de cobre"><span>🪙</span><strong>${copper}</strong></div>
+    <div class="token-currency-pill currency-silver" title="Monedas de plata"><span>⚪</span><strong>${silver}</strong></div>
+    <div class="token-currency-pill currency-gold" title="Monedas de oro"><span>💰</span><strong>${gold}</strong></div>`;
+}
+function getTokenLoadoutMarkup(combatant) {
+  if(!combatant || combatant.type === 'npc') return '';
+  ensureCombatLoadout(combatant);
+  const inventory = Array.isArray(combatant.inventory) ? combatant.inventory : [];
+  const equipment = inventory.filter(item => item && item.equipped);
+  const spells = Array.isArray(combatant.spells?.prepared) ? combatant.spells.prepared : [];
+  const attacks = Array.isArray(combatant.attacks) ? combatant.attacks : [];
+  const renderRows = (items, emptyText, rowRenderer) => {
+    if(!items.length) return `<div class="token-loadout-empty">${escapeHTML(emptyText)}</div>`;
+    return items.map(rowRenderer).join('');
+  };
+  const tabs = {
+    equipment: {
+      title:'Equipamiento',
+      button:'Equipamiento',
+      items:equipment,
+      empty:'Sin equipo equipado',
+      render:item => `
+        <div class="token-loadout-item">
+          <span class="token-loadout-icon">${escapeHTML(item.icon || '🎒')}</span>
+          <div>
+            <div class="token-loadout-name">${escapeHTML(item.name || 'Objeto')}</div>
+            <div class="token-loadout-detail">${escapeHTML(getInventoryItemBadge(item))}${parseInt(item.qty) > 1 ? ` · x${parseInt(item.qty)}` : ''}</div>
+          </div>
+        </div>`
+    },
+    spells: {
+      title:'Grimorio',
+      button:'Grimorio',
+      items:spells,
+      empty:'Sin hechizos preparados',
+      render:spell => `
+        <div class="token-loadout-item">
+          <span class="token-loadout-icon">${escapeHTML(spell.icon || '✨')}</span>
+          <div>
+            <div class="token-loadout-name">${escapeHTML(spell.name || 'Conjuro')}</div>
+            <div class="token-loadout-detail">Nivel ${Number.isFinite(Number(spell.level)) ? Number(spell.level) : 0}${spell.damage ? ` · Daño ${escapeHTML(spell.damage)}` : ''}</div>
+          </div>
+        </div>`
+    },
+    attacks: {
+      title:'Arsenal',
+      button:'Arsenal',
+      items:attacks,
+      empty:'Sin ataques agregados',
+      render:attack => `
+        <div class="token-loadout-item">
+          <span class="token-loadout-icon">${escapeHTML(attack.icon || '⚔️')}</span>
+          <div>
+            <div class="token-loadout-name">${escapeHTML(attack.name || 'Ataque')}</div>
+            <div class="token-loadout-detail">${escapeHTML(attack.type || 'Ataque')}${attack.damage ? ` · Daño ${escapeHTML(attack.damage)}` : ''}</div>
+          </div>
+        </div>`
+    }
+  };
+  const activeTab = tabs[mapState.tokenLoadoutTab] ? mapState.tokenLoadoutTab : 'equipment';
+  const active = tabs[activeTab];
+  const tabButtons = Object.entries(tabs).map(([key, tab]) => `
+    <button type="button" class="${key === activeTab ? 'active' : ''}" onclick="setTokenLoadoutTab('${key}')">
+      ${escapeHTML(tab.button)}
+    </button>`).join('');
+  return `
+    <div class="token-loadout-tabs">${tabButtons}</div>
+    <section class="token-loadout-section">
+      <div class="token-loadout-title">${escapeHTML(active.title)}</div>
+      <div class="token-loadout-list">${renderRows(active.items, active.empty, active.render)}</div>
+    </section>`;
+}
+function setTokenLoadoutTab(tab) {
+  if(!['equipment','spells','attacks'].includes(tab)) return;
+  mapState.tokenLoadoutTab=tab;
+  renderTokenActionPanel();
+}
 function updateTokenPanelAvoidance(active = false) {
   const wrap=document.getElementById('mapContainer');
   if(wrap) wrap.classList.toggle('director-panel-open', active === true);
+  document.querySelectorAll('#page-mapa .map-bottom-bar').forEach(bar => {
+    bar.classList.toggle('director-panel-open', active === true);
+  });
 }
 function renderTokenActionPanel() {
   const panel=document.getElementById('tokenActionPanel');
@@ -5183,6 +5411,18 @@ function renderTokenActionPanel() {
   document.getElementById('tokenActionPreview').innerHTML=getTokenPortraitMarkup(combatant);
   document.getElementById('tokenActionName').textContent=combatant.name||'Token';
   document.getElementById('tokenActionMeta').textContent=token.hidden ? 'Este token está oculto para jugadores.' : 'Este token está visible en el tablero.';
+  const currencyEl=document.getElementById('tokenActionCurrency');
+  if(currencyEl) {
+    const currencyMarkup=getTokenCurrencyMarkup(combatant);
+    currencyEl.innerHTML=currencyMarkup;
+    currencyEl.style.display=currencyMarkup ? 'grid' : 'none';
+  }
+  const loadoutEl=document.getElementById('tokenActionLoadout');
+  if(loadoutEl) {
+    const loadoutMarkup=getTokenLoadoutMarkup(combatant);
+    loadoutEl.innerHTML=loadoutMarkup;
+    loadoutEl.style.display=loadoutMarkup ? 'flex' : 'none';
+  }
   document.getElementById('tokenHideButton').textContent=token.hidden ? 'Mostrar token' : 'Ocultar token';
   normalizeTokenGridSize(token);
   const sizeLabel=document.getElementById('tokenSizeLabel');
@@ -7397,6 +7637,7 @@ function loadGame(id,skipConfirm=false) {
 
 function createNewGame() {
   if(!confirm('⚠️ ¡PELIGRO! Esto borrará todos los personajes, mapas e inventarios actuales. ¿Estás seguro de continuar?')) return;
+  archivePersistentLibrarySnapshot();
   saveLS('crq_chars', []);
   saveLS('crq_enemies', []);
   saveLS('crq_npcs', []);
@@ -7645,6 +7886,7 @@ function kickPlayer(peerEncoded) {
 }
 
 function showGameSelection() {
+  archivePersistentLibrarySnapshot();
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('gameSelectionScreen').classList.remove('hidden');
   document.getElementById('panelCreateGame').style.display = 'none';
@@ -8186,6 +8428,7 @@ function handleClientIncomingData(data) {
       activeMap.fogExploredAreas = mapState.fogExploredAreas;
       activeMap.exploredFogPolygons = cloneGameData(mapState.exploredFogPolygons);
     }
+    syncPersistentLibraryIntoCampaign({ broadcast:true });
     combatants = getInitiativeCombatants();
     
     saveLS('crq_chars', characters);

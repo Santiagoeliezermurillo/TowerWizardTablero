@@ -180,6 +180,8 @@
         <div class="token-action-preview" id="tokenActionPreview"></div>
         <div class="token-action-name" id="tokenActionName">Token</div>
         <div class="token-action-meta" id="tokenActionMeta">Solo el Dungeon Master puede editarlo.</div>
+        <div class="token-action-currency" id="tokenActionCurrency" style="display:none;"></div>
+        <div class="token-action-loadout" id="tokenActionLoadout" style="display:none;"></div>
         <div class="token-size-control">
           <button onclick="adjustSelectedTokenSize(-6)" aria-label="Achicar token">−</button>
           <strong id="tokenSizeLabel">100%</strong>
@@ -364,6 +366,11 @@
   <!-- Dice Bar -->
   <div class="map-bottom-bar">
     <div class="dice-icons-row">
+      <div class="quick-combat-dock" id="quickCombatDock">
+        <button id="quickCombatToggle" class="quick-combat-toggle" onclick="toggleQuickCombatPanel()">Combate</button>
+        <div class="quick-combat-panel glass" id="quickCombatPanel" style="display:none;"></div>
+      </div>
+      <div class="dice-icons-center">
       <button class="dice-icon-btn" onclick="rollDice(4)" title="d4"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,6 44,38 4,38"/><line x1="24" y1="26" x2="24" y2="6"/><line x1="24" y1="26" x2="4" y2="38"/><line x1="24" y1="26" x2="44" y2="38"/><text x="24" y="32" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">4</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(6)" title="d6"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,6 42,16 42,36 24,46 6,36 6,16"/><line x1="24" y1="26" x2="24" y2="46"/><line x1="24" y1="26" x2="6" y2="16"/><line x1="24" y1="26" x2="42" y2="16"/><text x="24" y="20" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">6</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(8)" title="d8"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,24 24,44 6,24"/><polygon points="14,14 34,14 24,34"/><text x="24" y="24" font-size="10" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg></button>
@@ -371,9 +378,6 @@
       <button class="dice-icon-btn" onclick="rollDice(12)" title="d12"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 36,8 43,19 43,31 36,42 24,46 12,42 5,31 5,19 12,8"/><polygon points="24,16 34,23 30,34 18,34 14,23"/><text x="24" y="28" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">12</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(20)" title="d20"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="24,4 42,14 42,34 24,44 6,34 6,14"/><polygon points="24,16 34,32 14,32"/><line x1="24" y1="4" x2="24" y2="16"/><line x1="6" y1="14" x2="24" y2="16"/><line x1="6" y1="14" x2="14" y2="32"/><line x1="6" y1="34" x2="14" y2="32"/><line x1="24" y1="44" x2="14" y2="32"/><line x1="24" y1="44" x2="34" y2="32"/><line x1="42" y1="34" x2="34" y2="32"/><line x1="42" y1="14" x2="34" y2="32"/><line x1="42" y1="14" x2="24" y2="16"/><text x="24" y="29" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">20</text></svg></button>
       <button class="dice-icon-btn" onclick="rollDice(100)" title="d100"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-5,-3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g><g transform="translate(5,3) scale(0.82)"><polygon points="24,4 42,20 24,44 6,20" fill="rgba(5,3,15,0.8)"/><polygon points="24,12 34,24 24,38 14,24"/><text x="24" y="27" font-size="9" font-weight="900" fill="currentColor" stroke="none" text-anchor="middle">10</text></g></svg></button>
-      <div class="quick-combat-dock" id="quickCombatDock">
-        <button id="quickCombatToggle" class="quick-combat-toggle" onclick="toggleQuickCombatPanel()">Combate</button>
-        <div class="quick-combat-panel glass" id="quickCombatPanel" style="display:none;"></div>
       </div>
     </div>
     <div class="dice-controls-row">
@@ -549,9 +553,17 @@
         <input type="file" id="enemyFolderInput" accept="image/*" multiple webkitdirectory directory onchange="importEnemyFiles(event)" style="display:none;">
         <button class="btn-secondary" onclick="document.getElementById('enemyFilesInput').click()">🖼 Importar imágenes</button>
         <button class="btn-secondary" onclick="document.getElementById('enemyFolderInput').click()">📁 Importar carpeta</button>
+        <button class="btn-primary" onclick="openEnemyEditorModal()">＋ Crear enemigo</button>
       </div>
     </div>
-    <div class="enemy-create-panel glass">
+    <div class="enemy-create-panel enemy-create-panel-minimal glass">
+      <div class="enemy-editor-header">
+        <div>
+          <span>Ficha de enemigo</span>
+          <h3 id="enemyEditorTitle">Crear enemigo</h3>
+        </div>
+        <button type="button" class="enemy-editor-close" onclick="resetEnemyForm()">×</button>
+      </div>
       <div class="form-group"><label>Nombre del enemigo</label><input id="newEnemyName" type="text" placeholder="Ej. Dragón rojo"></div>
       <div class="form-group"><label>Puntos de vida</label><input id="newEnemyHp" type="number" min="1" value="20"></div>
       <div class="form-group"><label>Clase de armadura</label><input id="newEnemyAc" type="number" min="0" value="12"></div>
@@ -588,9 +600,17 @@
         <input type="file" id="npcFolderInput" accept="image/*" multiple webkitdirectory directory onchange="importNpcFiles(event)" style="display:none;">
         <button class="btn-secondary" onclick="document.getElementById('npcFilesInput').click()">🖼 Importar imágenes</button>
         <button class="btn-secondary" onclick="document.getElementById('npcFolderInput').click()">📁 Importar carpeta</button>
+        <button class="btn-primary" onclick="openNpcEditorModal()">＋ Crear NPC</button>
       </div>
     </div>
-    <div class="enemy-create-panel glass npc-create-panel">
+    <div class="enemy-create-panel enemy-create-panel-minimal glass npc-create-panel">
+      <div class="enemy-editor-header">
+        <div>
+          <span>Ficha de NPC</span>
+          <h3 id="npcEditorTitle">Crear NPC</h3>
+        </div>
+        <button type="button" class="enemy-editor-close" onclick="resetNpcForm()">×</button>
+      </div>
       <div class="form-group"><label>Nombre del NPC</label><input id="newNpcName" type="text" placeholder="Ej. Tabernero Aldren"></div>
       <div class="form-group"><label>Puntos de vida</label><input id="newNpcHp" type="number" min="1" value="10"></div>
       <div class="form-group"><label>Clase de armadura</label><input id="newNpcAc" type="number" min="0" value="10"></div>
@@ -709,7 +729,7 @@
 <!-- ===== MODALS ===== -->
 <!-- Char Create Modal -->
 <div class="modal-overlay" id="charModalOverlay">
-  <div class="modal">
+  <div class="modal character-editor-modal">
     <div class="modal-header"><div class="modal-title" id="charModalTitle">Crear Personaje</div><div class="close-btn" onclick="closeModals()">×</div></div>
     <div class="modal-body">
       <div class="form-group"><label>Nombre</label><input type="text" id="newCharName" placeholder="Ej. Elrond"></div>
